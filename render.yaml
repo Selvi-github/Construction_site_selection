@@ -25,7 +25,3 @@ services:
         sync: false
       - key: AUTH_REQUIRED
         value: false
-    disk:
-      name: data-disk
-      mountPath: /app/data
-      sizeGB: 1
