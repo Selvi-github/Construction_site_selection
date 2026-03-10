@@ -1,0 +1,83 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Methodology Flow Diagram</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #182b46, #0a1626 65%);
+      display: grid;
+      place-items: center;
+      font-family: "Inter", system-ui, sans-serif;
+    }
+    .panel {
+      width: min(960px, 90vw);
+      height: min(540px, 85vh);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      box-shadow: 0 25px 80px rgba(3, 8, 20, 0.65);
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 16px;
+      color: #e2ecff;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 20px;
+    }
+    #diagram {
+      width: 100%;
+      height: calc(100% - 48px);
+      background: rgba(10, 20, 40, 0.55);
+      border-radius: 18px;
+      padding: 12px;
+    }
+    svg { width: 100%; height: 100%; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs" type="module"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "dark" });
+  </script>
+</head>
+<body>
+  <div class="panel">
+    <h1>AI Site Selection Methodology</h1>
+    <div id="diagram">
+      <pre class="mermaid">
+flowchart LR
+  subgraph Sources
+    A1[Satellite Imagery]
+    A2[Environmental APIs]
+    A3[Historical Project Data]
+  end
+  subgraph Pipeline
+    A[Data Collection]
+    B[Preprocessing]
+    C[Feature Engineering]
+    D[Model Training & Validation]
+    E[Deployment & Monitoring]
+  end
+  A1 --> A
+  A2 --> A
+  A3 --> A
+  A --> B --> C --> D --> E
+  B --> B1[Clean & Normalize]
+  B --> B2[Fill Missing Values]
+  C --> C1[Spatial Metrics]
+  C --> C2[Risk Indicators]
+  D --> D1[Split Train/Test]
+  D1 --> D2[Hyperparameter Search]
+  D2 --> D3[Model Evaluation]
+  D3 --> D
+  E --> E1[Deploy API]
+  E --> E2[Continuous Monitoring]
+  E2 -->|Feedback Loop| A
+      </pre>
+    </div>
+  </div>
+</body>
+</html>

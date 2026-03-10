@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Site Visualization</title>
+  <style>
+    :root {
+      --bg: #0a0a1a;
+      --panel: #11152a;
+      --panel-2: #151a33;
+      --ink: #e8ecff;
+      --muted: #9aa3c7;
+      --safe: #00ff88;
+      --warn: #ffaa00;
+      --danger: #ff4444;
+      --water: #0088ff;
+      --soil: #8b4513;
+      --forest: #228b22;
+      --rock: #4e4e5a;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 10% 10%, #141a3a 0%, var(--bg) 55%, #070711 100%);
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: #05050f;
+      display: grid;
+      place-items: center;
+      z-index: 999;
+      animation: fadeOut 0.8s ease forwards;
+      animation-delay: 1.4s;
+    }
+
+    .loading-spinner {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 6px solid rgba(255, 255, 255, 0.08);
+      border-top-color: var(--safe);
+      animation: spin 1s linear infinite;
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes fadeOut {
+      to { opacity: 0; pointer-events: none; }
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 60% 40%;
+      gap: 20px;
+      min-height: 100vh;
+      padding: 24px 24px 180px;
+    }
+
+    @media (max-width: 1000px) {
+      .layout {
+        grid-template-columns: 1fr;
+        padding-bottom: 240px;
+      }
+    }
+
+    .scene {
+      position: relative;
+      background: linear-gradient(145deg, rgba(20, 26, 58, 0.6), rgba(7, 7, 20, 0.95));
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 680px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .right-panel {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 16px;
+    }
+
+    .risk-cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .risk-card {
+      background: var(--panel-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--muted);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .risk-card strong {
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .risk-card.high {
+      border-color: rgba(255, 68, 68, 0.6);
+      box-shadow: 0 0 16px rgba(255, 68, 68, 0.25);
+      animation: pulseDanger 1.6s ease-in-out infinite;
+    }
+
+    .risk-card.medium {
+      border-color: rgba(255, 170, 0, 0.5);
+    }
+
+    .risk-card.low {
+      border-color: rgba(0, 255, 136, 0.4);
+    }
+
+    @keyframes pulseDanger {
+      0%, 100% { box-shadow: 0 0 10px rgba(255, 68, 68, 0.2); }
+      50% { box-shadow: 0 0 20px rgba(255, 68, 68, 0.6); }
+    }
+
+    .gauge {
+      display: grid;
+      place-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .gauge-ring {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: conic-gradient(var(--safe) 0deg, rgba(255,255,255,0.08) 0deg);
+      display: grid;
+      place-items: center;
+      position: relative;
+      transition: background 0.4s ease;
+    }
+
+    .gauge-ring::before {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      border-radius: 50%;
+      background: #0d1024;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .gauge-value {
+      position: relative;
+      font-size: 42px;
+      font-weight: 700;
+    }
+
+    .gauge-label {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .risk-level {
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .scene-grid {
+      position: relative;
+      height: 520px;
+      display: grid;
+      grid-template-columns: 1fr;
+      align-items: end;
+    }
+
+    .iso-plane {
+      position: absolute;
+      inset: auto 60px 80px 60px;
+      height: 260px;
+      transform: rotateX(62deg) rotateZ(45deg);
+      transform-origin: center;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.12));
+      border-radius: 14px;
+      box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.4);
+    }
+
+    .building {
+      position: absolute;
+      left: 50%;
+      bottom: 180px;
+      transform: translateX(-50%);
+      width: 220px;
+      height: 180px;
+      perspective: 800px;
+      transform-style: preserve-3d;
+      animation: riseIn 1s ease both;
+    }
+
+    @keyframes riseIn {
+      from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+
+    .building .front,
+    .building .side,
+    .building .roof {
+      position: absolute;
+      background: linear-gradient(135deg, #2b345f, #1b2242);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .building .front {
+      width: 220px;
+      height: 160px;
+      transform: translateZ(50px);
+      border-radius: 8px;
+    }
+
+    .building .side {
+      width: 100px;
+      height: 160px;
+      transform: rotateY(90deg) translateZ(120px);
+      transform-origin: left center;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #242b52, #141a33);
+    }
+
+    .building .roof {
+      width: 220px;
+      height: 100px;
+      transform: rotateX(90deg) translateZ(80px);
+      transform-origin: top center;
+      background: linear-gradient(135deg, #1a203d, #0e1326);
+    }
+
+    .building .windows {
+      position: absolute;
+      inset: 24px 18px 40px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .building .window {
+      height: 20px;
+      background: rgba(0, 136, 255, 0.2);
+      border: 1px solid rgba(0, 136, 255, 0.5);
+      border-radius: 4px;
+      box-shadow: 0 0 10px rgba(0, 136, 255, 0.3);
+    }
+
+    .building .door {
+      position: absolute;
+      width: 36px;
+      height: 46px;
+      background: #11162f;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-radius: 4px;
+    }
+
+    .building.hospital {
+      width: 260px;
+      height: 190px;
+    }
+
+    .building.hospital .front {
+      width: 260px;
+      height: 170px;
+    }
+
+    .building.hospital .roof {
+      width: 260px;
+    }
+
+    .building.hospital .cross {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: #c43030;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%) translateZ(60px);
+      box-shadow: 0 0 18px rgba(196, 48, 48, 0.6);
+    }
+
+    .building.hospital .cross::before,
+    .building.hospital .cross::after {
+      content: "";
+      position: absolute;
+      background: #c43030;
+    }
+
+    .building.hospital .cross::before {
+      width: 12px;
+      height: 40px;
+      left: 14px;
+      top: 0;
+    }
+
+    .building.hospital .cross::after {
+      width: 40px;
+      height: 12px;
+      left: 0;
+      top: 14px;
+    }
+
+    .building.school .flag {
+      position: absolute;
+      width: 4px;
+      height: 54px;
+      background: #c2c8ff;
+      top: -46px;
+      left: 20px;
+      transform: translateZ(60px);
+    }
+
+    .building.school .flag::after {
+      content: "";
+      position: absolute;
+      width: 24px;
+      height: 12px;
+      background: #ffaa00;
+      top: 8px;
+      left: 4px;
+      animation: flagWave 1.6s ease-in-out infinite;
+    }
+
+    @keyframes flagWave {
+      0%, 100% { transform: skewY(0deg); }
+      50% { transform: skewY(-8deg); }
+    }
+
+    .building.factory .chimney {
+      position: absolute;
+      width: 18px;
+      height: 70px;
+      background: #2a2f4f;
+      top: -60px;
+      left: 24px;
+      transform: translateZ(40px);
+    }
+
+    .building.factory .chimney:nth-child(2) {
+      left: 54px;
+    }
+
+    .building.apartment {
+      height: 240px;
+    }
+
+    .building.apartment .front {
+      height: 220px;
+    }
+
+    .building.apartment .windows {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .building.mall {
+      width: 300px;
+      height: 160px;
+    }
+
+    .building.mall .front {
+      width: 300px;
+      height: 140px;
+      background: linear-gradient(135deg, rgba(0, 136, 255, 0.15), #1b2242);
+    }
+
+    .building.mall .glass {
+      position: absolute;
+      inset: 18px 20px 40px;
+      border: 1px solid rgba(0, 136, 255, 0.6);
+      background: rgba(0, 136, 255, 0.2);
+      border-radius: 6px;
+    }
+
+    .soil-section {
+      position: absolute;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      width: 440px;
+      height: 150px;
+      background: #241510;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: inset 0 10px 20px rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .soil-layer {
+      position: absolute;
+      left: 0;
+      right: 0;
+    }
+
+    .soil-top {
+      top: 0;
+      height: 28px;
+      background: #4b2c1e;
+    }
+
+    .soil-mid {
+      top: 28px;
+      height: 60px;
+      background: #7a4a2d;
+    }
+
+    .soil-rock {
+      bottom: 0;
+      height: 62px;
+      background: var(--rock);
+    }
+
+    .water-table {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--water);
+      bottom: 20px;
+      opacity: 0.7;
+      box-shadow: 0 0 12px rgba(0, 136, 255, 0.7);
+      animation: waterPulse 2s ease-in-out infinite;
+      transition: transform 1s ease;
+    }
+
+    @keyframes waterPulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    .foundation {
+      position: absolute;
+      left: 50%;
+      bottom: 90px;
+      transform: translateX(-50%);
+      width: 220px;
+      height: 40px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 12px;
+      z-index: 2;
+    }
+
+    .foundation .pad {
+      width: 40px;
+      height: 24px;
+      background: #3b3f52;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 12px rgba(0, 255, 136, 0.1);
+    }
+
+    .foundation.raft .pad {
+      width: 180px;
+      height: 20px;
+    }
+
+    .foundation.pile .pad {
+      width: 20px;
+      height: 50px;
+      background: #2e3242;
+    }
+
+    .foundation.strip .pad {
+      width: 180px;
+      height: 12px;
+    }
+
+    .foundation.safe {
+      box-shadow: 0 0 18px rgba(0, 255, 136, 0.6);
+    }
+
+    .foundation.weak {
+      animation: sink 2.8s ease-in-out infinite;
+    }
+
+    @keyframes sink {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(6px); }
+    }
+
+    .water-flow {
+      position: absolute;
+      left: 40px;
+      bottom: 210px;
+      width: 160px;
+      height: 100px;
+      border-left: 2px solid var(--water);
+      border-bottom: 2px solid var(--water);
+      opacity: 0;
+      animation: none;
+    }
+
+    .water-flow.active {
+      opacity: 1;
+      animation: flow 1.6s linear infinite;
+    }
+
+    @keyframes flow {
+      0% { stroke-dashoffset: 120; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .water-surface {
+      position: absolute;
+      left: 50%;
+      bottom: 150px;
+      transform: translateX(-50%);
+      width: 260px;
+      height: 14px;
+      background: rgba(0, 136, 255, 0.5);
+      border-radius: 999px;
+      opacity: 0;
+      box-shadow: 0 0 18px rgba(0, 136, 255, 0.6);
+    }
+
+    .water-surface.active {
+      opacity: 1;
+      animation: ripple 2s ease-in-out infinite;
+    }
+
+    @keyframes ripple {
+      0%, 100% { transform: translateX(-50%) scaleX(0.9); }
+      50% { transform: translateX(-50%) scaleX(1); }
+    }
+
+    .wildlife {
+      position: absolute;
+      right: 40px;
+      bottom: 230px;
+      width: 160px;
+      height: 140px;
+      opacity: 0;
+    }
+
+    .wildlife.active {
+      opacity: 1;
+    }
+
+    .wildlife .forest {
+      position: absolute;
+      bottom: 0;
+      width: 160px;
+      height: 80px;
+      background: rgba(34, 139, 34, 0.4);
+      border-radius: 12px;
+      box-shadow: 0 0 18px rgba(34, 139, 34, 0.5);
+    }
+
+    .wildlife .dot {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 10px rgba(255, 68, 68, 0.9);
+      animation: orbit 4s linear infinite;
+    }
+
+    .wildlife.medium .dot {
+      background: var(--warn);
+      box-shadow: 0 0 10px rgba(255, 170, 0, 0.8);
+      animation-duration: 6s;
+    }
+
+    @keyframes orbit {
+      0% { transform: translate(0, 0); }
+      25% { transform: translate(-60px, -30px); }
+      50% { transform: translate(-90px, -10px); }
+      75% { transform: translate(-60px, 30px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    .quake {
+      position: absolute;
+      left: 50%;
+      bottom: 150px;
+      transform: translateX(-50%);
+      width: 260px;
+      height: 10px;
+      opacity: 0;
+    }
+
+    .quake.active {
+      opacity: 1;
+      animation: quakeWave 2s ease-in-out infinite;
+    }
+
+    @keyframes quakeWave {
+      0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); }
+      100% { box-shadow: 0 0 0 30px rgba(255, 68, 68, 0); }
+    }
+
+    .building.shake {
+      animation: shake 0.6s ease-in-out infinite;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(-50%) rotate(0deg); }
+      25% { transform: translateX(-48%) rotate(0.5deg); }
+      75% { transform: translateX(-52%) rotate(-0.5deg); }
+    }
+
+    .wind {
+      position: absolute;
+      inset: 40px 40px auto 40px;
+      height: 120px;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .wind.active {
+      opacity: 1;
+    }
+
+    .wind .line {
+      position: absolute;
+      height: 2px;
+      width: 120px;
+      background: rgba(255, 255, 255, 0.2);
+      animation: wind 2s linear infinite;
+    }
+
+    @keyframes wind {
+      from { transform: translateX(-140px); }
+      to { transform: translateX(320px); }
+    }
+
+    .rain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .rain.active {
+      opacity: 1;
+    }
+
+    .rain .drop {
+      position: absolute;
+      width: 2px;
+      height: 12px;
+      background: rgba(0, 136, 255, 0.8);
+      animation: rain 1s linear infinite;
+    }
+
+    @keyframes rain {
+      0% { transform: translateY(-40px); opacity: 0; }
+      30% { opacity: 1; }
+      100% { transform: translateY(260px); opacity: 0; }
+    }
+
+    .landslide {
+      position: absolute;
+      right: 40px;
+      bottom: 160px;
+      width: 180px;
+      height: 140px;
+      opacity: 0;
+    }
+
+    .landslide.active {
+      opacity: 1;
+    }
+
+    .landslide .hill {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 160px;
+      height: 120px;
+      background: linear-gradient(120deg, #3c2c1f, #2b1d12);
+      border-radius: 12px 12px 0 0;
+    }
+
+    .landslide .rock {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #5a4638;
+      animation: slide 2.6s ease-in-out infinite;
+    }
+
+    @keyframes slide {
+      0% { transform: translate(0, 0); opacity: 0; }
+      30% { opacity: 1; }
+      100% { transform: translate(-120px, 60px); opacity: 0; }
+    }
+
+    .safe-zone {
+      position: absolute;
+      left: 50%;
+      bottom: 170px;
+      transform: translateX(-50%);
+      width: 260px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 255, 136, 0.2), transparent 70%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .safe-zone.active {
+      opacity: 1;
+      animation: glow 2s ease-in-out infinite;
+    }
+
+    @keyframes glow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+
+    .bottom-bar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(8, 10, 24, 0.95);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 18px;
+      padding: 14px 24px;
+      backdrop-filter: blur(10px);
+    }
+
+    @media (max-width: 900px) {
+      .bottom-bar {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .timeline {
+      display: grid;
+      gap: 8px;
+    }
+
+    .timeline-bar {
+      height: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .timeline-fill {
+      position: absolute;
+      inset: 0;
+      width: 0;
+      background: linear-gradient(90deg, var(--warn), var(--safe));
+      border-radius: 999px;
+      animation: fillBar 2s ease forwards;
+    }
+
+    @keyframes fillBar {
+      to { width: 100%; }
+    }
+
+    .foundation-diagram {
+      display: grid;
+      gap: 8px;
+      align-content: center;
+    }
+
+    .foundation-shape {
+      width: 140px;
+      height: 40px;
+      background: #30364f;
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .foundation-shape.pile::after {
+      content: "";
+      position: absolute;
+      left: 16px;
+      bottom: -28px;
+      width: 12px;
+      height: 28px;
+      background: #212638;
+      box-shadow: 28px 0 0 #212638, 56px 0 0 #212638, 84px 0 0 #212638;
+    }
+
+    .foundation-shape.strip::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -10px;
+      height: 10px;
+      background: #212638;
+    }
+
+    .foundation-shape.isolated::after {
+      content: "";
+      position: absolute;
+      left: 18px;
+      bottom: -10px;
+      width: 24px;
+      height: 10px;
+      background: #212638;
+      box-shadow: 44px 0 0 #212638, 88px 0 0 #212638;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .badge.high { color: var(--danger); border: 1px solid rgba(255, 68, 68, 0.6); }
+    .badge.medium { color: var(--warn); border: 1px solid rgba(255, 170, 0, 0.6); }
+    .badge.low { color: var(--safe); border: 1px solid rgba(0, 255, 136, 0.5); }
+
+    .scene-badges {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: grid;
+      gap: 8px;
+      z-index: 3;
+    }
+
+    .value-tag {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .soil-alert {
+      position: absolute;
+      left: 50%;
+      bottom: 120px;
+      transform: translateX(-50%);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      width: 260px;
+    }
+
+    .cracks {
+      position: absolute;
+      inset: 20px 30px 40px;
+      background: repeating-linear-gradient(120deg, rgba(255, 68, 68, 0.3) 0, rgba(255, 68, 68, 0.3) 2px, transparent 2px, transparent 12px);
+      opacity: 0;
+    }
+
+    .cracks.active { opacity: 1; }
+
+    .status-strip {
+      margin-top: 12px;
+      display: grid;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .score-grid strong {
+      color: var(--ink);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading-overlay">
+    <div class="loading-spinner" aria-label="Loading"></div>
+  </div>
+
+  <main class="layout">
+    <section class="scene">
+      <div class="scene-badges">
+        <div class="badge" id="floodBadge"></div>
+        <div class="badge" id="wildlifeBadge"></div>
+        <div class="badge" id="quakeBadge"></div>
+        <div class="badge" id="soilBadge"></div>
+        <div class="badge" id="windBadge"></div>
+        <div class="badge" id="landslideBadge"></div>
+        <div class="badge" id="rainBadge"></div>
+      </div>
+
+      <div class="scene-grid">
+        <div class="iso-plane"></div>
+        <div class="safe-zone" id="safeZone"></div>
+
+        <div class="water-flow" id="waterFlow"></div>
+        <div class="water-surface" id="waterSurface"></div>
+        <div class="wildlife" id="wildlife">
+          <div class="forest"></div>
+        </div>
+        <div class="quake" id="quake"></div>
+        <div class="wind" id="wind"></div>
+        <div class="rain" id="rain"></div>
+        <div class="landslide" id="landslide">
+          <div class="hill"></div>
+        </div>
+
+        <div class="building" id="building">
+          <div class="front"></div>
+          <div class="side"></div>
+          <div class="roof"></div>
+          <div class="cross"></div>
+          <div class="flag"></div>
+          <div class="chimney"></div>
+          <div class="chimney"></div>
+          <div class="glass"></div>
+          <div class="windows" id="windows"></div>
+          <div class="door"></div>
+          <div class="cracks" id="cracks"></div>
+        </div>
+
+        <div class="foundation" id="foundation"></div>
+        <div class="soil-alert" id="soilAlert"></div>
+
+        <div class="soil-section" id="soilSection">
+          <div class="soil-layer soil-top"></div>
+          <div class="soil-layer soil-mid" id="soilMid"></div>
+          <div class="soil-layer soil-rock"></div>
+          <div class="water-table" id="waterTable"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="right-panel">
+      <div class="panel">
+        <div class="gauge">
+          <div class="gauge-ring" id="gaugeRing">
+            <div class="gauge-value" id="gaugeValue">0</div>
+          </div>
+          <div class="gauge-label">Feasibility Score</div>
+          <div class="risk-level" id="riskLevel"></div>
+          <div class="value-tag" id="buildingMeta"></div>
+        </div>
+        <div class="score-grid">
+          <div><strong id="soilScore">0</strong><div>Soil Score</div></div>
+          <div><strong id="climateScore">0</strong><div>Climate Score</div></div>
+          <div><strong id="envScore">0</strong><div>Environment Score</div></div>
+          <div><strong id="animalScore">0</strong><div>Animal Score</div></div>
+        </div>
+      </div>
+
+      <div class="panel risk-cards">
+        <div class="risk-card" id="cardFlood"><strong>Flood Risk</strong><span id="floodText"></span></div>
+        <div class="risk-card" id="cardWild"><strong>Wildlife Activity</strong><span id="wildText"></span></div>
+        <div class="risk-card" id="cardQuake"><strong>Earthquake Risk</strong><span id="quakeText"></span></div>
+        <div class="risk-card" id="cardSoil"><strong>Soil Stability</strong><span id="soilText"></span></div>
+        <div class="risk-card" id="cardWind"><strong>Wind Risk</strong><span id="windText"></span></div>
+        <div class="risk-card" id="cardLand"><strong>Landslide Risk</strong><span id="landText"></span></div>
+        <div class="risk-card" id="cardRain"><strong>Rainfall</strong><span id="rainText"></span></div>
+      </div>
+    </aside>
+  </main>
+
+  <section class="bottom-bar">
+    <div class="timeline">
+      <div><strong id="lifeText">Lifespan</strong> <span class="value-tag" id="confidenceText"></span></div>
+      <div class="timeline-bar">
+        <div class="timeline-fill" id="timelineFill"></div>
+      </div>
+      <div class="status-strip" id="timelineRange"></div>
+    </div>
+    <div class="foundation-diagram">
+      <div><strong>Foundation</strong></div>
+      <div class="foundation-shape" id="foundationShape"></div>
+      <div class="value-tag" id="foundationText"></div>
+    </div>
+  </section>
+
+  <script>
+    const demoData = {
+      feasibility_score: 69.6,
+      risk_level: "Medium Risk",
+      lifespan: "71-91 years",
+      confidence: 77.8,
+      foundation: "Isolated Footing with RCC",
+      building_type: "Hospital",
+      domain_scores: {
+        soil: 75.0,
+        climate: 76.4,
+        environment: 99.5,
+        animal: 0.0
+      },
+      raw_data: {
+        soil: {
+          bearing_capacity_kNm2: 142,
+          flood_risk: "Low",
+          liquefaction_risk: "Low",
+          shrink_swell_risk: "Low",
+          clay_percent: 28,
+          sand_percent: 42,
+          permeability_mmhr: 12,
+          estimated_water_table: "Deep (10-20m)"
+        },
+        climate: {
+          annual_rainfall_mm: 1200,
+          cyclone_risk: "Low",
+          max_wind_speed_ms: 12,
+          drought_risk: "Medium",
+          flood_risk: "Low",
+          monsoon_intensity: "Medium"
+        },
+        env: {
+          earthquake_risk: "Low",
+          landslide_risk: "Low",
+          flood_risk: "Low",
+          nearest_river_dist_km: 25.3,
+          wind_severity: "Low",
+          seismic_zone: "Zone II",
+          tsunami_risk: "None"
+        },
+        animal: {
+          protected_area_risk: "High",
+          elephant_corridor_risk: "Medium",
+          tiger_corridor_risk: "Low",
+          nearest_protected_area_km: 8.2,
+          threatened_species_count: 3
+        }
+      }
+    };
+
+    function getData() {
+      if (typeof window.SITE_DATA !== "undefined" && window.SITE_DATA) {
+        return window.SITE_DATA;
+      }
+      try {
+        const stored = localStorage.getItem("site_data");
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch (err) {
+        // Ignore localStorage parsing errors.
+      }
+      return demoData;
+    }
+
+    function riskLevelToClass(level) {
+      const v = String(level || "").toLowerCase();
+      if (v.includes("high")) return "high";
+      if (v.includes("medium")) return "medium";
+      return "low";
+    }
+
+    function initVisualization(data) {
+      const building = document.getElementById("building");
+      const windows = document.getElementById("windows");
+      const foundation = document.getElementById("foundation");
+      const foundationShape = document.getElementById("foundationShape");
+      const soilMid = document.getElementById("soilMid");
+      const waterTable = document.getElementById("waterTable");
+      const waterFlow = document.getElementById("waterFlow");
+      const waterSurface = document.getElementById("waterSurface");
+      const wildlife = document.getElementById("wildlife");
+      const quake = document.getElementById("quake");
+      const wind = document.getElementById("wind");
+      const rain = document.getElementById("rain");
+      const landslide = document.getElementById("landslide");
+      const safeZone = document.getElementById("safeZone");
+      const cracks = document.getElementById("cracks");
+
+      const soil = data.raw_data?.soil || {};
+      const climate = data.raw_data?.climate || {};
+      const env = data.raw_data?.env || {};
+      const animal = data.raw_data?.animal || {};
+
+      const buildingType = String(data.building_type || "House");
+      building.className = "building";
+      building.classList.add(buildingType.toLowerCase().replace(/\s+/g, "-"));
+
+      windows.innerHTML = "";
+      const windowCount = buildingType === "Apartment" ? 18 : buildingType === "Factory" ? 6 : 12;
+      for (let i = 0; i < windowCount; i += 1) {
+        const w = document.createElement("div");
+        w.className = "window";
+        windows.appendChild(w);
+      }
+
+      const clay = Number(soil.clay_percent || 0);
+      const sand = Number(soil.sand_percent || 0);
+      let midColor = "#7a4a2d";
+      if (clay > 40) midColor = "#a14b1a";
+      else if (sand > 60) midColor = "#d4b35c";
+      soilMid.style.background = midColor;
+
+      const foundationType = String(data.foundation || "").toLowerCase();
+      foundation.innerHTML = "";
+      foundation.className = "foundation";
+      foundationShape.className = "foundation-shape";
+      if (foundationType.includes("pile")) {
+        foundation.classList.add("pile");
+        foundationShape.classList.add("pile");
+        for (let i = 0; i < 6; i += 1) {
+          const pad = document.createElement("div");
+          pad.className = "pad";
+          foundation.appendChild(pad);
+        }
+      } else if (foundationType.includes("raft")) {
+        foundation.classList.add("raft");
+        foundationShape.classList.add("raft");
+        const pad = document.createElement("div");
+        pad.className = "pad";
+        foundation.appendChild(pad);
+      } else if (foundationType.includes("strip")) {
+        foundation.classList.add("strip");
+        foundationShape.classList.add("strip");
+        const pad = document.createElement("div");
+        pad.className = "pad";
+        foundation.appendChild(pad);
+      } else {
+        foundation.classList.add("isolated");
+        foundationShape.classList.add("isolated");
+        for (let i = 0; i < 3; i += 1) {
+          const pad = document.createElement("div");
+          pad.className = "pad";
+          foundation.appendChild(pad);
+        }
+      }
+
+      const bearing = Number(soil.bearing_capacity_kNm2 || 0);
+      const liquefaction = String(soil.liquefaction_risk || "");
+      const shrink = String(soil.shrink_swell_risk || "");
+      const soilBadge = document.getElementById("soilBadge");
+      const soilAlert = document.getElementById("soilAlert");
+      let soilLevel = "low";
+      if (bearing < 60 || liquefaction.toLowerCase() === "high") {
+        soilLevel = "high";
+        cracks.classList.add("active");
+        foundation.classList.add("weak");
+      } else if (bearing < 100 || shrink.toLowerCase() === "medium") {
+        soilLevel = "medium";
+      } else {
+        foundation.classList.add("safe");
+      }
+      soilBadge.className = `badge ${soilLevel}`;
+      soilBadge.textContent = soilLevel === "high" ? `WEAK SOIL - ${bearing}kN/m2` : soilLevel === "medium" ? "MODERATE SOIL" : `STRONG SOIL - ${bearing}kN/m2`;
+      soilAlert.textContent = soilBadge.textContent;
+
+      const river = Number(env.nearest_river_dist_km || 0);
+      const floodRisk = String(env.flood_risk || climate.flood_risk || "Low");
+      const rainfall = Number(climate.annual_rainfall_mm || 0);
+      let floodLevel = "low";
+      if (floodRisk.toLowerCase() === "high" || river < 10) floodLevel = "high";
+      else if (river >= 10 && river <= 30) floodLevel = "medium";
+      const floodBadge = document.getElementById("floodBadge");
+      floodBadge.className = `badge ${floodLevel}`;
+      floodBadge.textContent = floodLevel === "high" ? `FLOOD RISK HIGH - River ${river}km` : floodLevel === "medium" ? `FLOOD RISK MEDIUM - River ${river}km` : "FLOOD SAFE";
+      if (floodLevel === "high") {
+        waterFlow.classList.add("active");
+        waterSurface.classList.add("active");
+        waterTable.style.transform = "translateY(-22px)";
+        building.style.filter = "drop-shadow(0 0 12px rgba(0,136,255,0.4))";
+      } else if (floodLevel === "medium") {
+        waterSurface.classList.add("active");
+        waterSurface.style.opacity = 0.5;
+        waterTable.style.transform = "translateY(-12px)";
+      }
+
+      const protectedRisk = String(animal.protected_area_risk || "Low");
+      const wildlifeBadge = document.getElementById("wildlifeBadge");
+      let wildlifeLevel = riskLevelToClass(protectedRisk);
+      wildlifeBadge.className = `badge ${wildlifeLevel}`;
+      const protectedDist = Number(animal.nearest_protected_area_km || 0);
+      wildlifeBadge.textContent = wildlifeLevel === "high" ? `PROTECTED AREA ${protectedDist}km` : wildlifeLevel === "medium" ? "WILDLIFE ACTIVITY" : "NO WILDLIFE CONFLICT";
+      if (wildlifeLevel !== "low") {
+        wildlife.classList.add("active");
+        wildlife.classList.add(wildlifeLevel === "high" ? "high" : "medium");
+        const dotCount = wildlifeLevel === "high" ? 7 : 3;
+        for (let i = 0; i < dotCount; i += 1) {
+          const dot = document.createElement("div");
+          dot.className = "dot";
+          dot.style.top = `${20 + i * 8}px`;
+          dot.style.right = `${20 + i * 6}px`;
+          wildlife.appendChild(dot);
+        }
+      }
+
+      const quakeRisk = String(env.earthquake_risk || "Low");
+      const zone = String(env.seismic_zone || "");
+      const quakeBadge = document.getElementById("quakeBadge");
+      let quakeLevel = riskLevelToClass(quakeRisk);
+      if (zone.includes("III") || zone.includes("IV")) quakeLevel = "medium";
+      quakeBadge.className = `badge ${quakeLevel}`;
+      quakeBadge.textContent = quakeLevel === "high" ? `SEISMIC ${zone}` : quakeLevel === "medium" ? `ZONE ${zone}` : `ZONE ${zone} - STABLE`;
+      if (quakeLevel === "high") {
+        quake.classList.add("active");
+        building.classList.add("shake");
+      } else if (quakeLevel === "medium") {
+        setInterval(() => {
+          building.classList.toggle("shake");
+          setTimeout(() => building.classList.remove("shake"), 500);
+        }, 4000);
+      }
+
+      const windSpeed = Number(climate.max_wind_speed_ms || 0);
+      const cyclone = String(climate.cyclone_risk || env.cyclone_risk || "Low");
+      let windLevel = "low";
+      if (windSpeed > 20 || cyclone.toLowerCase() === "high") windLevel = "high";
+      else if (windSpeed >= 12) windLevel = "medium";
+      const windBadge = document.getElementById("windBadge");
+      windBadge.className = `badge ${windLevel}`;
+      windBadge.textContent = windLevel === "high" ? `HIGH WIND ${windSpeed}m/s` : windLevel === "medium" ? "MODERATE WIND" : "CALM CONDITIONS";
+      if (windLevel !== "low") {
+        wind.classList.add("active");
+        wind.innerHTML = "";
+        for (let i = 0; i < (windLevel === "high" ? 6 : 3); i += 1) {
+          const line = document.createElement("div");
+          line.className = "line";
+          line.style.top = `${i * 18}px`;
+          line.style.animationDelay = `${i * 0.2}s`;
+          wind.appendChild(line);
+        }
+      }
+
+      const landslideRisk = String(env.landslide_risk || "Low");
+      const landBadge = document.getElementById("landslideBadge");
+      const landLevel = riskLevelToClass(landslideRisk);
+      landBadge.className = `badge ${landLevel}`;
+      landBadge.textContent = landLevel === "high" ? "LANDSLIDE RISK" : landLevel === "medium" ? "SLOPE RISK" : "STABLE TERRAIN";
+      if (landLevel !== "low") {
+        landslide.classList.add("active");
+        const rockCount = landLevel === "high" ? 6 : 3;
+        for (let i = 0; i < rockCount; i += 1) {
+          const rock = document.createElement("div");
+          rock.className = "rock";
+          rock.style.right = `${10 + i * 8}px`;
+          rock.style.bottom = `${40 + i * 10}px`;
+          rock.style.animationDelay = `${i * 0.4}s`;
+          landslide.appendChild(rock);
+        }
+      }
+
+      let rainLevel = "low";
+      if (rainfall > 2500) rainLevel = "high";
+      else if (rainfall >= 1500) rainLevel = "medium";
+      const rainBadge = document.getElementById("rainBadge");
+      rainBadge.className = `badge ${rainLevel}`;
+      rainBadge.textContent = rainLevel === "high" ? `${rainfall}mm/year` : rainLevel === "medium" ? "HIGH RAINFALL" : "NORMAL RAINFALL";
+      if (rainLevel !== "low") {
+        rain.classList.add("active");
+        rain.innerHTML = "";
+        const dropCount = rainLevel === "high" ? 50 : 20;
+        for (let i = 0; i < dropCount; i += 1) {
+          const drop = document.createElement("div");
+          drop.className = "drop";
+          drop.style.left = `${Math.random() * 100}%`;
+          drop.style.animationDelay = `${Math.random()}s`;
+          rain.appendChild(drop);
+        }
+      }
+
+      const allSafe = data.feasibility_score >= 70 &&
+        floodLevel === "low" &&
+        wildlifeLevel === "low" &&
+        quakeLevel === "low" &&
+        soilLevel === "low" &&
+        windLevel === "low" &&
+        landLevel === "low" &&
+        rainLevel === "low";
+      if (allSafe) {
+        safeZone.classList.add("active");
+      }
+
+      document.getElementById("floodText").textContent = `River: ${river}km | ${floodRisk}`;
+      document.getElementById("wildText").textContent = `Protected Area: ${protectedDist}km | ${protectedRisk}`;
+      document.getElementById("quakeText").textContent = `Zone ${zone}`;
+      document.getElementById("soilText").textContent = `${bearing}kN/m2 | ${soilLevel.toUpperCase()}`;
+      document.getElementById("windText").textContent = `${windSpeed}m/s | ${windLevel.toUpperCase()}`;
+      document.getElementById("landText").textContent = landslideRisk;
+      document.getElementById("rainText").textContent = `${rainfall}mm/year | ${climate.monsoon_intensity || ""}`;
+
+      const cardMap = [
+        ["cardFlood", floodLevel],
+        ["cardWild", wildlifeLevel],
+        ["cardQuake", quakeLevel],
+        ["cardSoil", soilLevel],
+        ["cardWind", windLevel],
+        ["cardLand", landLevel],
+        ["cardRain", rainLevel]
+      ];
+      cardMap.forEach(([id, level]) => {
+        const el = document.getElementById(id);
+        el.classList.add(level);
+      });
+
+      document.getElementById("soilScore").textContent = (data.domain_scores?.soil || 0).toFixed(1);
+      document.getElementById("climateScore").textContent = (data.domain_scores?.climate || 0).toFixed(1);
+      document.getElementById("envScore").textContent = (data.domain_scores?.environment || 0).toFixed(1);
+      document.getElementById("animalScore").textContent = (data.domain_scores?.animal || 0).toFixed(1);
+
+      document.getElementById("riskLevel").textContent = data.risk_level || "";
+      document.getElementById("buildingMeta").textContent = `${buildingType}`;
+
+      document.getElementById("lifeText").textContent = `Lifespan ${data.lifespan || ""}`;
+      document.getElementById("confidenceText").textContent = `${data.confidence || 0}% confidence`;
+      document.getElementById("timelineRange").textContent = data.lifespan || "";
+      document.getElementById("foundationText").textContent = `Recommended: ${data.foundation || ""}`;
+
+      const gaugeRing = document.getElementById("gaugeRing");
+      const gaugeValue = document.getElementById("gaugeValue");
+      const score = Math.max(0, Math.min(100, Number(data.feasibility_score || 0)));
+      const color = score < 45 ? "var(--danger)" : score < 70 ? "var(--warn)" : "var(--safe)";
+      gaugeRing.style.background = `conic-gradient(${color} ${score * 3.6}deg, rgba(255,255,255,0.08) ${score * 3.6}deg)`;
+      document.getElementById("riskLevel").style.color = color;
+
+      const start = performance.now();
+      const duration = 2000;
+      function animateGauge(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const val = Math.round(score * t);
+        gaugeValue.textContent = val;
+        if (t < 1) requestAnimationFrame(animateGauge);
+      }
+      requestAnimationFrame(animateGauge);
+    }
+
+  </script>
+
+  <!-- Flask injects real data here -->
+  <script id="site-data" type="application/json">
+    {{ result|tojson|safe }}
+  </script>
+  <script>
+    const injected = document.getElementById("site-data");
+    if (injected && injected.textContent.trim()) {
+      try {
+        window.SITE_DATA = JSON.parse(injected.textContent);
+        localStorage.setItem("site_data", JSON.stringify(window.SITE_DATA));
+      } catch (err) {
+        // Fallback to demo data if JSON is invalid.
+      }
+    }
+    const data = getData();
+    initVisualization(data);
+  </script>
+</body>
+</html>

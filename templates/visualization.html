@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Risk & Feasibility Visualization</title>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f0f4f8;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #edf2f7;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .header h2 {
+            margin: 0;
+            color: #1a365d;
+            font-size: 28px;
+        }
+
+        .header p {
+            color: #718096;
+            margin-top: 8px;
+        }
+
+        .score-banner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .score-banner h1 {
+            font-size: 48px;
+            margin: 0;
+            color: #2b6cb0;
+        }
+
+        .badges {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 10px 20px;
+            border-radius: 99px;
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .HIGH {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
+        .MEDIUM {
+            background: #feebc8;
+            color: #c05621;
+        }
+
+        .LOW,
+        .STRONG {
+            background: #c6f6d5;
+            color: #2f855a;
+        }
+
+        .WEAK {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+        }
+
+        .info-panel {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-row strong {
+            color: #4a5568;
+        }
+
+        .disclaimer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 13px;
+            color: #a0aec0;
+        }
+
+        /* Interactive Abstract Graphic */
+        .site-graphic {
+            background: linear-gradient(to bottom, #ebf8ff, #bee3f8);
+            height: 200px;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #cbd5e0;
+        }
+
+        .graphic-ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 40%;
+            background: #d6bc98;
+            border-top: 4px solid #b79469;
+        }
+
+        .graphic-building {
+            position: absolute;
+            bottom: 40%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 100px;
+            background: #e2e8f0;
+            border: 2px solid #a0aec0;
+            border-bottom: none;
+            display: flex;
+            flex-wrap: wrap;
+            padding: 5px;
+            gap: 5px;
+            align-content: flex-start;
+        }
+
+        .window {
+            width: 12px;
+            height: 12px;
+            background: #90cdf4;
+            border: 1px solid #63b3ed;
+        }
+
+        .water-overlay {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: rgba(49, 130, 206, 0.6);
+            height: 0;
+            /* Changed based on flood risk */
+            transition: height 1s;
+        }
+
+        .quake-cracks {
+            position: absolute;
+            bottom: 20%;
+            left: 30%;
+            width: 40px;
+            height: 60px;
+            opacity: 0;
+            background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0, 0, 0, 0.5) 10px, rgba(0, 0, 0, 0.5) 12px);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h2>Site Feasibility Report</h2>
+                <p>AI-Generated Architectural & Environmental Analysis</p>
+                <a href="/" style="display:inline-block; margin-top:10px; color:#3182ce; text-decoration:none;">&larr;
+                    Back to Selection</a>
+            </div>
+
+            {% if error %}
+            <div style="background: #fed7d7; color: #c53030; padding:15px; border-radius:8px; text-align:center;">
+                <strong>Error:</strong> {{ error }}
+            </div>
+            {% elif result %}
+            <div class="score-banner">
+                <div>
+                    <h4 style="margin:0 0 5px 0; color:#718096; text-transform:uppercase; letter-spacing:1px;">Overall
+                        Feasibility Score</h4>
+                    <h1>{{ result.feasibility_score }}%</h1>
+                    <p style="margin:5px 0 0 0; color:#4a5568; font-weight:bold;">{{ result.risk_level }}</p>
+                </div>
+            </div>
+
+            <div class="badges">
+                <div class="badge {{ result.flood_risk }}">
+                    <span style="font-size:18px;">🌊</span> Flood: {{ result.flood_risk }}
+                </div>
+                <div class="badge {{ result.seismic_risk }}">
+                    <span style="font-size:18px;">⚡</span> Seismic: {{ result.seismic_risk }}
+                </div>
+                <div class="badge {{ result.soil_strength }}">
+                    <span style="font-size:18px;">🪨</span> Soil: {{ result.soil_strength }}
+                </div>
+                <div class="badge {{ result.animal_conflict }}">
+                    <span style="font-size:18px;">🐾</span> Wildlife: {{ result.animal_conflict }}
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <!-- Data Visualization: Radar Chart -->
+                <div>
+                    <h3 style="text-align:center; color:#2d3748;">Risk Domain Analysis</h3>
+                    <div class="chart-container">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Info Panel, CSS Graphic, and Pre-Rendered AI Image -->
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <!-- New AI Image Section -->
+                    <div class="info-panel"
+                        style="padding: 0; overflow: hidden; background: #fff; border: 1px solid #e2e8f0;">
+                        <div
+                            style="background: #2b6cb0; color: white; padding: 10px 15px; font-weight: bold; font-size: 14px;">
+                            AI Scenario Visualization
+                        </div>
+                        {% if image_path %}
+                        <img src="{{ image_path }}" alt="Pre-rendered Scenario"
+                            style="width: 100%; height: auto; object-fit: cover; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; display: block;">
+                        {% else %}
+                        <div style="padding: 40px; text-align: center; color: #a0aec0; background: #f8fafc;">
+                            No scenario image available.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="info-panel">
+                        <h3 style="margin-top:0; color:#2d3748;">Site Metrics</h3>
+                        <div class="info-row">
+                            <span>Predicted Lifespan</span>
+                            <strong>{{ result.lifespan }}</strong>
+                        </div>
+                        <div class="info-row">
+                            <span>Confidence</span>
+                            <strong>{{ result.confidence }}%</strong>
+                        </div>
+                        <div class="info-row">
+                            <span>Recommended Foundation</span>
+                            <strong style="text-align:right;">{{ result.foundation }}</strong>
+                        </div>
+                        <div class="info-row">
+                            <span>Summary</span>
+                            <strong style="text-align:right; font-size: 14px;">{{ result.risk_factor_summary }}</strong>
+                        </div>
+                    </div>
+
+                    <!-- CSS Abstract Site Graphic -->
+                    <h3 style="text-align:center; color:#2d3748;">Site Simulation Abstraction</h3>
+                    <div class="site-graphic" id="siteGraphic">
+                        <div class="graphic-ground" id="ground"></div>
+                        <div class="quake-cracks" id="cracks"></div>
+                        <div class="graphic-building" id="building">
+                            <div class="window"></div>
+                            <div class="window"></div>
+                            <div class="window"></div>
+                            <div class="window"></div>
+                            <div class="window"></div>
+                            <div class="window"></div>
+                        </div>
+                        <div class="water-overlay" id="water"></div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                // Safely load scores passed from python (using raw inputs for risks)
+                const resultScores = {{ result.domain_scores | tojson | safe if result and result.domain_scores else "{}" }};
+                const soilScore = resultScores.soil || 50;
+                const climateScore = resultScores.climate || 50;
+                const envScore = resultScores.environment || 50;
+                const animalScore = {{ result.domain_scores.animal | default (50) }};
+
+                // --- 1. Render Radar Chart ---
+                const ctx = document.getElementById('radarChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Soil Quality', 'Climate Safety', 'Environmental Stability', 'Wildlife Safety'],
+                        datasets: [{
+                            label: 'Domain Safety Score (Higher is Better)',
+                            data: [soilScore, climateScore, envScore, animalScore],
+                            backgroundColor: 'rgba(66, 153, 225, 0.2)',
+                            borderColor: 'rgba(66, 153, 225, 1)',
+                            pointBackgroundColor: 'rgba(49, 130, 206, 1)',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgba(49, 130, 206, 1)',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                angleLines: { color: 'rgba(0,0,0,0.1)' },
+                                grid: { color: 'rgba(0,0,0,0.1)' },
+                                suggestedMin: 0,
+                                suggestedMax: 100,
+                                ticks: { stepSize: 20 }
+                            }
+                        },
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+
+                // --- 2. Animate CSS Graphic based on risks ---
+                setTimeout(() => {
+                    const floodRisk = "{{ result.flood_risk }}";
+                    const seismicRisk = "{{ result.seismic_risk }}";
+                    const soilStrength = "{{ result.soil_strength }}";
+
+                    // Flood Animation
+                    if (floodRisk === "HIGH") {
+                        document.getElementById('water').style.height = '45%';
+                    } else if (floodRisk === "MEDIUM") {
+                        document.getElementById('water').style.height = '20%';
+                    } else {
+                        document.getElementById('water').style.height = '0%';
+                    }
+
+                    // Seismic Animation
+                    if (seismicRisk === "HIGH") {
+                        const building = document.getElementById('building');
+                        building.style.transform = 'translateX(-50%) rotate(3deg)';
+                        document.getElementById('cracks').style.opacity = '1';
+                    }
+
+                    // Soil Animation
+                    if (soilStrength === "WEAK") {
+                        document.getElementById('ground').style.borderRadius = "50% 50% 0 0";
+                        document.getElementById('building').style.bottom = "36%";
+                    }
+                }, 500);
+            </script>
+
+            {% else %}
+            <div style="text-align: center; padding: 50px;">
+                <p>No analysis results available. Please run an analysis first.</p>
+                <a href="/"
+                    style="display:inline-block; margin-top:10px; padding: 10px 20px; background:#3182ce; color:white; border-radius:8px; text-decoration:none;">Go
+                    back to Map</a>
+            </div>
+            {% endif %}
+
+            <div class="disclaimer">
+                This visualization dashboard highlights safety quotients and risks mathematically derived from
+                environmental data.<br>
+                It should be used as a supplementary tool for professional civil engineers.
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

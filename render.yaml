@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: construction-site-selection
+    env: docker
+    plan: free
+    region: singapore # Choose the region closest to your users
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////app/data/app.db # Use a persistent disk if you want to keep data after restarts
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: MAIL_SERVER
+        sync: false
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_USE_TLS
+        value: true
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: BHUVAN_API_URL
+        value: https://bhuvan-app1.nrsc.gov.in/api/v1/bhuvan/soil
+      - key: BHUVAN_API_KEY
+        sync: false
+      - key: AUTH_REQUIRED
+        value: false
+    disk:
+      name: data-disk
+      mountPath: /app/data
+      sizeGB: 1

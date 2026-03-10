@@ -1,0 +1,2076 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>AI Construction Site Selection</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Crimson+Pro:wght@400;600&display=swap"
+		rel="stylesheet" />
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+		integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+	<style>
+		:root {
+			--bg-1: #f7f2ea;
+			--bg-2: #e8f1ed;
+			--ink: #1a2421;
+			--muted: #4d5b57;
+			--accent: #1f7a6b;
+			--accent-2: #f06d3a;
+			--panel: #ffffff;
+			--panel-2: #f3f7f5;
+			--border: #dbe4df;
+			--shadow: 0 14px 30px rgba(16, 27, 24, 0.12);
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			font-family: "Space Grotesk", Arial, sans-serif;
+			color: var(--ink);
+			background: radial-gradient(1200px 700px at 10% 0%, #fff6e8 0%, transparent 60%),
+				radial-gradient(900px 600px at 90% 10%, #e2f6ef 0%, transparent 55%),
+				linear-gradient(130deg, var(--bg-1), var(--bg-2));
+			min-height: 100vh;
+			position: relative;
+			overflow-x: hidden;
+		}
+
+		body::before,
+		body::after {
+			content: "";
+			position: absolute;
+			width: 420px;
+			height: 420px;
+			background: conic-gradient(from 120deg, rgba(31, 122, 107, 0.12), rgba(240, 109, 58, 0.12), transparent 60%);
+			filter: blur(12px);
+			z-index: 0;
+		}
+
+		body::before {
+			top: -120px;
+			left: -80px;
+		}
+
+		body::after {
+			bottom: -160px;
+			right: -60px;
+			transform: rotate(25deg);
+		}
+
+		.app {
+			position: relative;
+			z-index: 1;
+			max-width: 1300px;
+			margin: 0 auto;
+			padding: 28px 24px 48px;
+		}
+
+		header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 16px;
+			margin-bottom: 24px;
+		}
+
+		.title h1 {
+			margin: 0;
+			font-size: 30px;
+			letter-spacing: -0.4px;
+		}
+
+		.title p {
+			margin: 0;
+			color: var(--muted);
+			font-family: "Crimson Pro", "Times New Roman", serif;
+			font-size: 18px;
+		}
+
+		.status-pill {
+			padding: 10px 14px;
+			background: var(--panel);
+			border: 1px solid var(--border);
+			border-radius: 999px;
+			box-shadow: var(--shadow);
+			font-size: 13px;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.status-dot {
+			width: 10px;
+			height: 10px;
+			background: #2bb673;
+			border-radius: 50%;
+			box-shadow: 0 0 0 4px rgba(43, 182, 115, 0.2);
+		}
+
+		.grid {
+			display: grid;
+			grid-template-columns: 1.3fr 0.9fr;
+			gap: 22px;
+		}
+
+		.tabs {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 12px;
+			flex-wrap: wrap;
+		}
+
+		.tab-btn {
+			appearance: none;
+			border: 1px solid var(--border);
+			background: var(--panel);
+			color: var(--muted);
+			padding: 10px 14px;
+			border-radius: 999px;
+			font-weight: 600;
+			cursor: pointer;
+			transition: all 0.2s ease;
+		}
+
+		.tab-btn.active {
+			background: var(--accent);
+			border-color: var(--accent);
+			color: #fff;
+			box-shadow: var(--shadow);
+		}
+
+		.tab-panel {
+			display: none;
+			animation: rise 0.4s ease both;
+		}
+
+		.tab-panel.active {
+			display: block;
+		}
+
+		.status-bar {
+			margin-bottom: 16px;
+			padding: 10px 14px;
+			border-radius: 12px;
+			background: #f3f7f5;
+			border: 1px solid var(--border);
+			font-size: 12px;
+			color: var(--muted);
+			min-height: 18px;
+		}
+
+		.panel {
+			background: var(--panel);
+			border: 1px solid var(--border);
+			border-radius: 18px;
+			box-shadow: var(--shadow);
+			padding: 18px;
+			animation: rise 0.5s ease both;
+		}
+
+		@keyframes rise {
+			from {
+				transform: translateY(8px);
+				opacity: 0;
+			}
+
+			to {
+				transform: translateY(0);
+				opacity: 1;
+			}
+		}
+
+		.panel-title {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 12px;
+			font-weight: 600;
+		}
+
+		.map-wrap {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+
+		#map {
+			height: 440px;
+			width: 100%;
+			border-radius: 14px;
+			overflow: hidden;
+			border: 1px solid var(--border);
+		}
+
+		.coords {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 10px;
+		}
+
+		.search-row {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			gap: 10px;
+			align-items: center;
+			margin: 12px 0;
+		}
+
+		.search-row input {
+			padding: 10px 12px;
+			border-radius: 10px;
+			border: 1px solid var(--border);
+			font-size: 14px;
+			background: #fff;
+		}
+
+		.search-results {
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			background: #ffffff;
+			padding: 8px;
+			margin-bottom: 10px;
+			display: none;
+			flex-direction: column;
+			gap: 6px;
+		}
+
+		.search-results button {
+			text-align: left;
+			padding: 8px 10px;
+			border-radius: 10px;
+			border: 1px solid var(--border);
+			background: #f9fbfa;
+			font-size: 12px;
+			cursor: pointer;
+		}
+
+		.search-results button:hover {
+			background: #eef5f2;
+		}
+
+		.field {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		.field input {
+			padding: 10px 12px;
+			border-radius: 10px;
+			border: 1px solid var(--border);
+			font-size: 14px;
+		}
+
+		.controls {
+			display: flex;
+			flex-direction: column;
+			gap: 16px;
+		}
+
+		.drop-zone {
+			border: 1px dashed var(--accent);
+			border-radius: 14px;
+			background: var(--panel-2);
+			padding: 14px;
+			min-height: 74px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+		}
+
+		.drop-zone .selected {
+			font-size: 15px;
+			font-weight: 600;
+		}
+
+		.drop-zone .hint {
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.type-list {
+			display: grid;
+			grid-template-columns: repeat(2, 1fr);
+			gap: 10px;
+		}
+
+		.type-card {
+			background: #fffaf5;
+			border: 1px solid #f3d7c3;
+			padding: 10px;
+			border-radius: 12px;
+			cursor: grab;
+			font-size: 13px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			transition: transform 0.2s ease, box-shadow 0.2s ease;
+		}
+
+		.type-card:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 10px 20px rgba(240, 109, 58, 0.18);
+		}
+
+		.type-card span {
+			font-weight: 600;
+		}
+
+		.slider {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+
+		.slider input {
+			width: 100%;
+		}
+
+		.button-row {
+			display: flex;
+			gap: 10px;
+		}
+
+		.btn {
+			appearance: none;
+			border: none;
+			padding: 12px 16px;
+			border-radius: 12px;
+			font-weight: 600;
+			cursor: pointer;
+			background: var(--accent);
+			color: white;
+			transition: transform 0.2s ease, box-shadow 0.2s ease;
+		}
+
+		.btn.secondary {
+			background: #e7f2ef;
+			color: var(--accent);
+			border: 1px solid #c8e1dc;
+		}
+
+		.btn:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 10px 20px rgba(31, 122, 107, 0.2);
+		}
+
+		.results {
+			display: grid;
+			grid-template-columns: repeat(2, 1fr);
+			gap: 12px;
+		}
+
+		.input-row {
+			display: grid;
+			grid-template-columns: repeat(2, 1fr);
+			gap: 12px;
+		}
+
+		.input-field {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.input-field input,
+		.input-field select,
+		.input-field textarea {
+			padding: 10px 12px;
+			border-radius: 10px;
+			border: 1px solid var(--border);
+			font-size: 14px;
+			font-family: inherit;
+		}
+
+		.input-field textarea {
+			min-height: 90px;
+			resize: vertical;
+		}
+
+		.result-card {
+			background: #f8fbfa;
+			border-radius: 14px;
+			padding: 12px;
+			border: 1px solid var(--border);
+			min-height: 86px;
+		}
+
+		.result-card h4 {
+			margin: 0 0 6px 0;
+			font-size: 12px;
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: 0.6px;
+		}
+
+		.result-card p {
+			margin: 0;
+			font-size: 18px;
+			font-weight: 600;
+		}
+
+		.result-sub {
+			margin-top: 4px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.result-meta {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-top: 8px;
+			flex-wrap: wrap;
+		}
+
+		.result-note {
+			margin-top: 6px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.badge {
+			font-size: 11px;
+			padding: 4px 8px;
+			border-radius: 999px;
+			font-weight: 600;
+			border: 1px solid transparent;
+			white-space: nowrap;
+		}
+
+		.badge.good {
+			background: #dff4ea;
+			color: #1f6b46;
+			border-color: #c2e6d2;
+		}
+
+		.badge.warn {
+			background: #fff3d6;
+			color: #8a5a00;
+			border-color: #f1ddb0;
+		}
+
+		.badge.bad {
+			background: #fde1e1;
+			color: #9b1c1c;
+			border-color: #f5c7c7;
+		}
+
+		.banner {
+			border-radius: 14px;
+			padding: 12px 14px;
+			border: 1px solid var(--border);
+			background: #f5f7f6;
+			margin-bottom: 12px;
+		}
+
+		.banner.good {
+			background: #e3f7ec;
+			border-color: #c4ebd7;
+			color: #1c5f3f;
+		}
+
+		.banner.warn {
+			background: #fff5db;
+			border-color: #f0dfb7;
+			color: #805300;
+		}
+
+		.banner.bad {
+			background: #fde3e3;
+			border-color: #f4c7c7;
+			color: #8d1d1d;
+		}
+
+		.banner-title {
+			font-weight: 700;
+			font-size: 14px;
+			margin-bottom: 4px;
+		}
+
+		.banner-body {
+			font-size: 13px;
+			line-height: 1.4;
+		}
+
+		.info-tip {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 18px;
+			height: 18px;
+			border-radius: 50%;
+			background: #eef3f1;
+			color: var(--muted);
+			font-size: 11px;
+			margin-left: 6px;
+			border: 1px solid var(--border);
+		}
+
+		.result-card.risk-low {
+			background: #e9f8ef;
+			border-color: #cfeedd;
+		}
+
+		.result-card.risk-medium {
+			background: #fff5df;
+			border-color: #f1e0b8;
+		}
+
+		.result-card.risk-high {
+			background: #fde8e8;
+			border-color: #f3c9c9;
+		}
+
+		.chart-wrap {
+			margin-top: 14px;
+			padding: 12px;
+			border-radius: 14px;
+			background: #ffffff;
+			border: 1px solid var(--border);
+		}
+
+		.log {
+			font-size: 12px;
+			color: var(--muted);
+			min-height: 18px;
+		}
+
+		.legend {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.legend span {
+			padding: 4px 8px;
+			border-radius: 999px;
+			background: #f2f6f4;
+			border: 1px solid var(--border);
+		}
+
+		@media (max-width: 980px) {
+			.grid {
+				grid-template-columns: 1fr;
+			}
+
+			#map {
+				height: 360px;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<div class="app">
+		<header>
+			<div class="title">
+				<h1 data-i18n="title">Construction Viability & LifeSpan Prediction</h1>
+				<p data-i18n="subtitle">Map-driven feasibility, lifespan prediction, and risk intelligence.</p>
+			</div>
+			<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+				<div class="status-pill">
+					<div class="status-dot"></div>
+					<span data-i18n="modelStatus">Data collection online</span>
+				</div>
+				<div class="status-pill" style="gap: 6px;">
+					<label for="langSelect" style="font-size: 12px; color: var(--muted);"
+						data-i18n="language">Language</label>
+					<select id="langSelect"
+						style="border-radius: 999px; padding: 6px 10px; border: 1px solid var(--border);">
+						<option value="en">English</option>
+						<option value="hi">Hindi</option>
+						<option value="ta">Tamil</option>
+					</select>
+				</div>
+				<button class="btn secondary" id="logoutBtn" style="padding: 10px 14px;">Logout</button>
+			</div>
+		</header>
+
+		<div class="tabs">
+			<button class="tab-btn active" data-tab="site">Site</button>
+			<button class="tab-btn" data-tab="analysis">Analysis</button>
+			<button class="tab-btn" data-tab="review">Engineer Review</button>
+			<button class="tab-btn" data-tab="reports">Reports</button>
+		</div>
+		<div class="status-bar" id="statusLog">Ready for site selection.</div>
+
+		<div class="tab-panel active" id="tab-site">
+			<div class="grid">
+				<section class="panel map-wrap">
+					<div class="panel-title">
+						<span>Site Selection Map</span>
+						<button class="btn secondary" id="locateBtn">Use my location</button>
+					</div>
+					<div id="map"></div>
+					<div class="search-row">
+						<input id="addressInput" type="text" placeholder="Search address or place" />
+						<button class="btn secondary" id="addressSearchBtn">Search</button>
+					</div>
+					<div class="search-results" id="addressResults"></div>
+					<div class="coords">
+						<label class="field">Latitude
+							<input id="latInput" type="text" placeholder="Click on map" readonly />
+						</label>
+						<label class="field">Longitude
+							<input id="lonInput" type="text" placeholder="Click on map" readonly />
+						</label>
+					</div>
+					<div class="legend">
+						<span>Soil</span>
+						<span>Climate</span>
+						<span>Environment</span>
+						<span>Wildlife</span>
+					</div>
+				</section>
+
+				<section class="panel controls">
+					<div>
+						<div class="panel-title">Construction Type</div>
+						<div class="drop-zone" id="dropZone">
+							<div>
+								<div class="selected" id="selectedType">House</div>
+								<div class="hint">Drag a type block into this zone</div>
+							</div>
+							<span class="hint">Drop here</span>
+						</div>
+					</div>
+
+					<div class="type-list" id="typeList">
+						<div class="type-card" draggable="true" data-type="House"><span>House</span><span>1-3F</span>
+						</div>
+						<div class="type-card" draggable="true" data-type="Apartment">
+							<span>Apartment</span><span>4-12F</span>
+						</div>
+						<div class="type-card" draggable="true" data-type="Hospital"><span>Hospital</span><span>High
+								load</span></div>
+						<div class="type-card" draggable="true" data-type="School"><span>School</span><span>Mid
+								load</span></div>
+						<div class="type-card" draggable="true" data-type="Factory">
+							<span>Factory</span><span>Industrial</span>
+						</div>
+						<div class="type-card" draggable="true" data-type="Warehouse"><span>Warehouse</span><span>Wide
+								span</span></div>
+						<div class="type-card" draggable="true" data-type="Bridge">
+							<span>Bridge</span><span>Critical</span>
+						</div>
+						<div class="type-card" draggable="true" data-type="Mall"><span>Mall</span><span>Public</span>
+						</div>
+					</div>
+
+					<div class="slider">
+						<div class="panel-title">Floors / Levels</div>
+						<input id="floorInput" type="range" min="1" max="20" value="2" />
+						<div class="hint" id="floorValue">Selected: 2 floors</div>
+					</div>
+
+					<div>
+						<div class="panel-title">Local Sensor Inputs (Optional)</div>
+						<div class="input-row">
+							<label class="input-field">Soil Moisture (%)
+								<input id="sensorSoilMoisture" type="number" min="0" max="100" step="0.1"
+									placeholder="e.g., 18.5" />
+							</label>
+							<label class="input-field">Groundwater Depth (m)
+								<input id="sensorGroundwater" type="number" min="0" step="0.1"
+									placeholder="e.g., 9.2" />
+							</label>
+							<label class="input-field">Local Rainfall (mm)
+								<input id="sensorRainfall" type="number" min="0" step="0.1" placeholder="24h" />
+							</label>
+							<label class="input-field">Local Wind (m/s)
+								<input id="sensorWind" type="number" min="0" step="0.1" placeholder="avg" />
+							</label>
+						</div>
+					</div>
+
+					<div class="button-row">
+						<button class="btn" id="analyzeBtn">Analyze Site</button>
+						<button class="btn secondary" id="visualizeBtn" disabled>View Visualization</button>
+						<button class="btn secondary" id="resetBtn">Reset</button>
+					</div>
+				</section>
+			</div>
+		</div>
+
+		<div class="tab-panel" id="tab-analysis">
+			<div class="grid">
+				<section class="panel controls">
+					<div class="panel-title">AI Results</div>
+					<div class="banner" id="summaryBanner">
+						<div class="banner-title" id="summaryTitle">--</div>
+						<div class="banner-body" id="summaryBody">--</div>
+					</div>
+					<div class="banner" id="verdictBanner">
+						<div class="banner-title" id="verdictTitle">--</div>
+						<div class="banner-body" id="verdictBody">--</div>
+					</div>
+					<div class="banner warn" id="lifespanWarning" style="display: none;">
+						<div class="banner-title">⚠️ WARNING</div>
+						<div class="banner-body">Predicted lifespan under 40 years. Foundation upgrade and soil
+							treatment required.</div>
+					</div>
+					<div class="results">
+						<div class="result-card">
+							<h4>Feasibility Score</h4>
+							<p id="feasibility">--</p>
+							<div class="result-meta">
+								<span class="badge" id="feasibilityBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card" id="riskCard">
+							<h4>Risk Level</h4>
+							<p id="risk">--</p>
+							<div class="result-meta">
+								<span class="badge" id="riskBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Lifespan Range</h4>
+							<p id="lifespan">--</p>
+							<div class="result-meta">
+								<span class="badge" id="lifespanBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Prediction Confidence<span class="info-tip"
+									title="How reliable is this prediction (not a measure of site quality).">?</span>
+							</h4>
+							<p id="confidence">--</p>
+							<div class="result-sub">How reliable is this prediction (not a measure of site quality).
+							</div>
+							<div class="result-meta">
+								<span class="badge" id="confidenceBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Foundation</h4>
+							<p id="foundation">--</p>
+							<div class="result-note" id="foundationNote">--</div>
+						</div>
+						<div class="result-card">
+							<h4>Success Probability</h4>
+							<p id="success">--</p>
+							<div class="result-meta">
+								<span class="badge" id="successBadge">--</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="panel-title">Why do my scores look mixed?</div>
+					<div class="result-card" style="grid-column: 1 / -1;">
+						<p id="scoreExplanation" class="result-note">--</p>
+					</div>
+
+					<div class="panel-title">Model Scores</div>
+					<div class="results">
+						<div class="result-card">
+							<h4>Soil Degradation Risk</h4>
+							<p id="soilRisk">--</p>
+							<div class="result-meta">
+								<span class="badge" id="soilRiskBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Climate Stress Frequency</h4>
+							<p id="climateStress">--</p>
+							<div class="result-meta">
+								<span class="badge" id="climateStressBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Water Exposure Probability</h4>
+							<p id="waterExposure">--</p>
+							<div class="result-meta">
+								<span class="badge" id="waterExposureBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Biological Damage Probability</h4>
+							<p id="bioDamage">--</p>
+							<div class="result-meta">
+								<span class="badge" id="bioDamageBadge">--</span>
+							</div>
+						</div>
+						<div class="result-card">
+							<h4>Construction Type Code</h4>
+							<p id="typeCode">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Risk Factor Summary</h4>
+							<p id="riskSummary">--</p>
+						</div>
+					</div>
+
+					<div class="panel-title">Model & Data Metadata</div>
+					<div class="results">
+						<div class="result-card">
+							<h4>Model Version</h4>
+							<p id="modelVersion">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Trained On</h4>
+							<p id="trainedOn">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Feature Count</h4>
+							<p id="featureCount">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Source Status</h4>
+							<p id="sourceStatus">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Data Freshness</h4>
+							<p id="dataFreshness">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Data Quality</h4>
+							<p id="dataQuality">--</p>
+						</div>
+						<div class="result-card">
+							<h4>Historical Match</h4>
+							<p id="historicalMatch">--</p>
+						</div>
+					</div>
+
+					<div class="panel-title">AHP Comparison</div>
+					<div class="results">
+						<div class="result-card">
+							<h4>AHP Weighted Score</h4>
+							<p id="ahpScore">--</p>
+						</div>
+						<div class="result-card">
+							<h4>AI vs AHP Delta</h4>
+							<p id="ahpDelta">--</p>
+						</div>
+					</div>
+
+					<div class="panel-title">Safety Notes</div>
+					<div class="result-card" style="grid-column: 1 / -1;">
+						<ul id="safetyNotes" style="margin: 0; padding-left: 18px; color: var(--muted);"></ul>
+					</div>
+				</section>
+
+				<section class="panel controls">
+					<div class="chart-wrap">
+						<div class="panel-title">Risk Breakdown Graph</div>
+						<canvas id="riskChart" height="160"></canvas>
+					</div>
+				</section>
+			</div>
+		</div>
+
+		<div class="tab-panel" id="tab-review">
+			<div class="grid">
+				<section class="panel controls">
+					<div class="panel-title">Engineer Review Checklist</div>
+					<div class="result-card" style="grid-column: 1 / -1;">
+						<div class="hint">Required field validations before approval:</div>
+						<label><input id="chk-soil" type="checkbox" /> Geotechnical soil bearing test</label><br />
+						<label><input id="chk-water" type="checkbox" /> Groundwater table survey</label><br />
+						<label><input id="chk-seismic" type="checkbox" /> Seismic micro-zonation check</label><br />
+						<label><input id="chk-flood" type="checkbox" /> Flood history verification</label><br />
+						<label><input id="chk-env" type="checkbox" /> Environmental clearance review</label>
+					</div>
+
+					<div class="panel-title">Engineer Sign-off</div>
+					<div class="input-row">
+						<label class="input-field">Reviewer Name
+							<input id="reviewerName" type="text" placeholder="Licensed engineer" />
+						</label>
+						<label class="input-field">License ID
+							<input id="licenseId" type="text" placeholder="Registration number" />
+						</label>
+						<label class="input-field">Decision
+							<select id="reviewDecision">
+								<option value="Approved">Approved</option>
+								<option value="Conditional">Conditional</option>
+								<option value="Not Approved">Not Approved</option>
+							</select>
+						</label>
+						<label class="input-field">Review Date
+							<input id="reviewDate" type="date" />
+						</label>
+					</div>
+					<label class="input-field">Notes
+						<textarea id="reviewNotes" placeholder="Key observations and mandatory actions"></textarea>
+					</label>
+					<div class="button-row">
+						<button class="btn secondary" id="submitReviewBtn">Submit Review</button>
+					</div>
+
+					<div class="panel-title">Validation & Testing Checklist</div>
+					<div class="result-card" style="grid-column: 1 / -1;">
+						<div class="hint">Minimum acceptance checks before client release:</div>
+						<label><input id="chk-verify" type="checkbox" /> Model output verified with at least 3
+							historical sites</label><br />
+						<label><input id="chk-fresh" type="checkbox" /> API data freshness confirmed (last 24
+							hours)</label><br />
+						<label><input id="chk-field" type="checkbox" /> Soil and groundwater field tests
+							attached</label><br />
+						<label><input id="chk-cross" type="checkbox" /> Seismic / flood maps
+							cross-verified</label><br />
+						<label><input id="chk-license" type="checkbox" /> Engineer sign-off and license verified</label>
+					</div>
+				</section>
+			</div>
+		</div>
+
+		<div class="tab-panel" id="tab-reports">
+			<div class="grid">
+				<section class="panel controls">
+					<div class="panel-title">Reports</div>
+					<div class="button-row">
+						<button class="btn secondary" id="reportBtn" disabled>Download PDF Report</button>
+					</div>
+					<div class="result-card">
+						<div class="hint" data-i18n="emailReportHint">Email the report to the client.</div>
+						<div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+							<input id="reportEmail" type="email" placeholder="client@email.com"
+								style="flex: 1; min-width: 220px;" />
+							<button class="btn secondary" id="emailReportBtn" disabled>Email Report</button>
+						</div>
+					</div>
+					<div class="result-card">
+						<div class="hint" data-i18n="reportHint">Reports are generated using the latest analysis
+							results.</div>
+					</div>
+					<div class="result-card">
+						<div class="hint" data-i18n="reviewHint">Ensure engineer review is submitted before issuing to
+							clients.</div>
+					</div>
+					<div class="result-card">
+						<h4 data-i18n="releaseStatus">Release Status</h4>
+						<p id="releaseStatus">Pending review</p>
+					</div>
+					<div class="panel-title">Historical Dataset</div>
+					<div class="result-card">
+						<input id="datasetFile" type="file" accept=".csv" />
+						<button class="btn secondary" id="uploadDatasetBtn" style="margin-top: 10px;">Upload
+							CSV</button>
+						<div class="hint" id="datasetStatus">No dataset uploaded.</div>
+					</div>
+				</section>
+			</div>
+		</div>
+	</div>
+
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+		integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+	<script>
+		const translations = {
+			en: {
+				title: "AI Construction Site Intelligence",
+				subtitle: "Map-driven feasibility, lifespan prediction, and risk intelligence.",
+				modelStatus: "Data collection online",
+				language: "Language",
+				emailReportHint: "Email the report to the client.",
+				reportHint: "Reports are generated using the latest analysis results.",
+				reviewHint: "Ensure engineer review is submitted before issuing to clients.",
+				releaseStatus: "Release Status",
+				logout: "Logout",
+				emailReport: "Email Report"
+				,
+				releaseReady: "Ready for client release",
+				releasePending: "Pending review"
+			},
+			hi: {
+				title: "एआई निर्माण स्थल बुद्धिमत्ता",
+				subtitle: "मानचित्र-आधारित व्यवहार्यता, आयु‑पूर्वानुमान और जोखिम बुद्धिमत्ता।",
+				modelStatus: "डेटा संग्रह ऑनलाइन",
+				language: "भाषा",
+				emailReportHint: "रिपोर्ट क्लाइंट को ईमेल करें।",
+				reportHint: "रिपोर्ट नवीनतम विश्लेषण परिणामों से बनाई जाती है।",
+				reviewHint: "क्लाइंट को जारी करने से पहले इंजीनियर समीक्षा जमा करें।",
+				releaseStatus: "जारी करने की स्थिति",
+				logout: "लॉगआउट",
+				emailReport: "रिपोर्ट ईमेल करें"
+				,
+				releaseReady: "क्लाइंट के लिए जारी करने हेतु तैयार",
+				releasePending: "समीक्षा लंबित"
+			},
+			ta: {
+				title: "AI கட்டுமான இட நுண்ணறிவு",
+				subtitle: "வரைபட சார்ந்த சாத்தியக்கூறு, ஆயுள் கணிப்பு மற்றும் அபாய நுண்ணறிவு.",
+				modelStatus: "தரவு சேகரிப்பு ஆன்லைனில்",
+				language: "மொழி",
+				emailReportHint: "அறிக்கையை வாடிக்கையாளருக்கு மின்னஞ்சல் செய்யவும்.",
+				reportHint: "அறிக்கைகள் சமீபத்திய பகுப்பாய்வு முடிவுகளுடன் உருவாகும்.",
+				reviewHint: "வாடிக்கையாளருக்கு வழங்க முன் பொறியாளர் மதிப்பாய்வு அவசியம்.",
+				releaseStatus: "விடுவிப்பு நிலை",
+				logout: "வெளியேறு",
+				emailReport: "அறிக்கை மின்னஞ்சல்"
+				,
+				releaseReady: "வாடிக்கையாளர் விடுவிப்பிற்கு தயாராக உள்ளது",
+				releasePending: "மதிப்பாய்வு நிலுவையில் உள்ளது"
+			}
+		};
+
+		const state = {
+			lat: null,
+			lon: null,
+			buildingType: "House",
+			floors: 2,
+			marker: null,
+			chart: null
+		};
+
+		const latInput = document.getElementById("latInput");
+		const lonInput = document.getElementById("lonInput");
+		const addressInput = document.getElementById("addressInput");
+		const addressSearchBtn = document.getElementById("addressSearchBtn");
+		const addressResults = document.getElementById("addressResults");
+		const selectedType = document.getElementById("selectedType");
+		const floorInput = document.getElementById("floorInput");
+		const floorValue = document.getElementById("floorValue");
+		const statusLog = document.getElementById("statusLog");
+		const reportBtn = document.getElementById("reportBtn");
+		const visualizeBtn = document.getElementById("visualizeBtn");
+		const emailReportBtn = document.getElementById("emailReportBtn");
+		const reportEmail = document.getElementById("reportEmail");
+		const logoutBtn = document.getElementById("logoutBtn");
+		const langSelect = document.getElementById("langSelect");
+		const submitReviewBtn = document.getElementById("submitReviewBtn");
+		const reviewerName = document.getElementById("reviewerName");
+		const licenseId = document.getElementById("licenseId");
+		const reviewDecision = document.getElementById("reviewDecision");
+		const reviewDate = document.getElementById("reviewDate");
+		const reviewNotes = document.getElementById("reviewNotes");
+		const releaseStatus = document.getElementById("releaseStatus");
+		const sensorSoilMoisture = document.getElementById("sensorSoilMoisture");
+		const sensorGroundwater = document.getElementById("sensorGroundwater");
+		const sensorRainfall = document.getElementById("sensorRainfall");
+		const sensorWind = document.getElementById("sensorWind");
+		const datasetFile = document.getElementById("datasetFile");
+		const uploadDatasetBtn = document.getElementById("uploadDatasetBtn");
+		const datasetStatus = document.getElementById("datasetStatus");
+		const checklistIds = [
+			"chk-soil",
+			"chk-water",
+			"chk-seismic",
+			"chk-flood",
+			"chk-env",
+			"chk-verify",
+			"chk-fresh",
+			"chk-field",
+			"chk-cross",
+			"chk-license"
+		];
+		const checklistInputs = checklistIds.map((id) => document.getElementById(id));
+		let lastPayload = null;
+		let lastReview = null;
+		let authToken = localStorage.getItem("jwt") || "";
+
+		function applyTranslations(lang) {
+			const dict = translations[lang] || translations.en;
+			document.querySelectorAll("[data-i18n]").forEach((el) => {
+				const key = el.getAttribute("data-i18n");
+				if (dict[key]) {
+					el.textContent = dict[key];
+				}
+			});
+			logoutBtn.textContent = dict.logout;
+			emailReportBtn.textContent = dict.emailReport;
+		}
+
+		function requireLogin() {
+			if (!authToken) {
+				window.location.href = "/login";
+				return false;
+			}
+			return true;
+		}
+
+		function authHeaders() {
+			return authToken
+				? { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` }
+				: { "Content-Type": "application/json" };
+		}
+		function checklistComplete() {
+			return checklistInputs.every((input) => input && input.checked);
+		}
+
+		function updateReleaseStatus() {
+			const dict = translations[langSelect.value] || translations.en;
+			const ready = lastReview && checklistComplete();
+			reportBtn.disabled = !ready;
+			emailReportBtn.disabled = !ready;
+			releaseStatus.textContent = ready ? dict.releaseReady : dict.releasePending;
+		}
+
+		const tabButtons = document.querySelectorAll(".tab-btn");
+		const tabPanels = document.querySelectorAll(".tab-panel");
+
+		function setActiveTab(tabName) {
+			tabButtons.forEach((btn) => {
+				btn.classList.toggle("active", btn.dataset.tab === tabName);
+			});
+			tabPanels.forEach((panel) => {
+				panel.classList.toggle("active", panel.id === `tab-${tabName}`);
+			});
+			if (tabName === "site") {
+				setTimeout(() => {
+					map.invalidateSize();
+				}, 150);
+			}
+		}
+
+		tabButtons.forEach((btn) => {
+			btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+		});
+
+		const map = L.map("map").setView([20.5937, 78.9629], 5);
+		L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+			maxZoom: 18,
+			attribution: "&copy; OpenStreetMap contributors"
+		}).addTo(map);
+
+		function setMarker(lat, lon) {
+			state.lat = lat;
+			state.lon = lon;
+			latInput.value = lat.toFixed(5);
+			lonInput.value = lon.toFixed(5);
+			if (state.marker) {
+				state.marker.setLatLng([lat, lon]);
+			} else {
+				state.marker = L.marker([lat, lon], { draggable: true }).addTo(map);
+				state.marker.on("dragend", (e) => {
+					const pos = e.target.getLatLng();
+					setMarker(pos.lat, pos.lng);
+				});
+			}
+		}
+
+		map.on("click", (e) => setMarker(e.latlng.lat, e.latlng.lng));
+
+		function renderAddressResults(results) {
+			if (!addressResults) return;
+			addressResults.innerHTML = "";
+			if (!results || !results.length) {
+				addressResults.style.display = "none";
+				return;
+			}
+			results.forEach((item) => {
+				const button = document.createElement("button");
+				const displayName = item.display_name || "Unknown location";
+				button.textContent = displayName;
+				button.addEventListener("click", () => {
+					const latNum = Number(item.lat);
+					const lonNum = Number(item.lon);
+					if (Number.isNaN(latNum) || Number.isNaN(lonNum)) {
+						statusLog.textContent = "Invalid coordinates returned. Please try another result.";
+						return;
+					}
+					map.setView([latNum, lonNum], 16);
+					setMarker(latNum, lonNum);
+					statusLog.textContent = `Location set: ${displayName}`;
+				});
+				addressResults.appendChild(button);
+			});
+			addressResults.style.display = "flex";
+		}
+
+		function normalizeResult(item, source) {
+			return {
+				lat: item.lat,
+				lon: item.lon,
+				display_name: item.display_name || item.name || "Unknown location",
+				source
+			};
+		}
+
+		function normalizePhotonResult(item) {
+			const props = item.properties || {};
+			const coords = item.geometry && item.geometry.coordinates ? item.geometry.coordinates : [];
+			return {
+				lat: coords[1],
+				lon: coords[0],
+				display_name: props.label || props.name || "Unknown location",
+				source: "photon"
+			};
+		}
+
+		function mergeResults(primary, secondary) {
+			const seen = new Set();
+			const out = [];
+			[...primary, ...secondary].forEach((item) => {
+				const lat = Number(item.lat);
+				const lon = Number(item.lon);
+				if (Number.isNaN(lat) || Number.isNaN(lon)) return;
+				const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+				if (seen.has(key)) return;
+				seen.add(key);
+				out.push(item);
+			});
+			return out;
+		}
+
+		async function geocodeAddress(query) {
+			if (!query) {
+				statusLog.textContent = "Enter an address to search.";
+				return;
+			}
+			statusLog.textContent = "Searching address...";
+			try {
+				const indiaViewbox = "68.0,37.5,97.5,6.5";
+				const base = "https://nominatim.openstreetmap.org/search";
+				const params = new URLSearchParams({
+					format: "json",
+					q: query,
+					limit: "5",
+					addressdetails: "1",
+					countrycodes: "in",
+					viewbox: indiaViewbox,
+					bounded: "1"
+				});
+				const res = await fetch(`${base}?${params.toString()}`, {
+					headers: { "Accept": "application/json" }
+				});
+				let data = await res.json();
+				let primaryResults = Array.isArray(data) ? data.map((item) => normalizeResult(item, "nominatim")) : [];
+				if (!primaryResults.length) {
+					const fallbackParams = new URLSearchParams({
+						format: "json",
+						q: query,
+						limit: "5",
+						addressdetails: "1"
+					});
+					const fallbackRes = await fetch(`${base}?${fallbackParams.toString()}`, {
+						headers: { "Accept": "application/json" }
+					});
+					data = await fallbackRes.json();
+					primaryResults = Array.isArray(data) ? data.map((item) => normalizeResult(item, "nominatim")) : [];
+				}
+
+				const photonParams = new URLSearchParams({
+					q: query,
+					limit: "5",
+					lat: "20.5937",
+					lon: "78.9629",
+					lang: "en"
+				});
+				const photonRes = await fetch(`https://photon.komoot.io/api/?${photonParams.toString()}`);
+				const photonJson = await photonRes.json();
+				const photonResults = photonJson && Array.isArray(photonJson.features)
+					? photonJson.features.map((item) => normalizePhotonResult(item))
+					: [];
+
+				const combined = mergeResults(primaryResults, photonResults);
+				if (!combined.length) {
+					statusLog.textContent = "No results found. Try a more specific address.";
+					renderAddressResults([]);
+					return;
+				}
+				renderAddressResults(combined);
+				const { lat, lon, display_name } = combined[0];
+				const latNum = Number(lat);
+				const lonNum = Number(lon);
+				if (Number.isNaN(latNum) || Number.isNaN(lonNum)) {
+					statusLog.textContent = "Invalid coordinates returned. Please try again.";
+					return;
+				}
+				map.setView([latNum, lonNum], 16);
+				setMarker(latNum, lonNum);
+				statusLog.textContent = `Location set: ${display_name}`;
+			} catch (err) {
+				statusLog.textContent = "Address search failed. Please try again.";
+				renderAddressResults([]);
+			}
+		}
+
+		if (addressSearchBtn) {
+			addressSearchBtn.addEventListener("click", () => {
+				geocodeAddress(addressInput.value.trim());
+			});
+		}
+
+		if (addressInput) {
+			addressInput.addEventListener("keydown", (e) => {
+				if (e.key === "Enter") {
+					e.preventDefault();
+					geocodeAddress(addressInput.value.trim());
+				}
+			});
+		}
+
+		if (logoutBtn) {
+			logoutBtn.addEventListener("click", () => {
+				localStorage.removeItem("jwt");
+				authToken = "";
+				window.location.href = "/login";
+			});
+		}
+
+		if (langSelect) {
+			langSelect.addEventListener("change", (e) => {
+				applyTranslations(e.target.value);
+			});
+		}
+
+		document.getElementById("locateBtn").addEventListener("click", () => {
+			if (!navigator.geolocation) {
+				statusLog.textContent = "Geolocation not supported in this browser.";
+				return;
+			}
+			navigator.geolocation.getCurrentPosition(
+				(pos) => {
+					const { latitude, longitude } = pos.coords;
+					map.setView([latitude, longitude], 12);
+					setMarker(latitude, longitude);
+					statusLog.textContent = "Location detected. Ready to analyze.";
+				},
+				() => {
+					statusLog.textContent = "Unable to access location. Please click on the map.";
+				}
+			);
+		});
+
+		document.querySelectorAll(".type-card").forEach((card) => {
+			card.addEventListener("dragstart", (e) => {
+				e.dataTransfer.setData("text/plain", card.dataset.type);
+			});
+		});
+
+		const dropZone = document.getElementById("dropZone");
+		dropZone.addEventListener("dragover", (e) => {
+			e.preventDefault();
+			dropZone.style.borderColor = "var(--accent-2)";
+		});
+		dropZone.addEventListener("dragleave", () => {
+			dropZone.style.borderColor = "var(--accent)";
+		});
+		dropZone.addEventListener("drop", (e) => {
+			e.preventDefault();
+			dropZone.style.borderColor = "var(--accent)";
+			const type = e.dataTransfer.getData("text/plain");
+			if (type) {
+				state.buildingType = type;
+				selectedType.textContent = type;
+				statusLog.textContent = `Construction type set to ${type}.`;
+			}
+		});
+
+		floorInput.addEventListener("input", () => {
+			state.floors = Number(floorInput.value);
+			floorValue.textContent = `Selected: ${state.floors} floors`;
+		});
+
+		document.getElementById("resetBtn").addEventListener("click", () => {
+			state.buildingType = "House";
+			state.floors = 2;
+			selectedType.textContent = "House";
+			floorInput.value = 2;
+			floorValue.textContent = "Selected: 2 floors";
+			statusLog.textContent = "Inputs reset. Choose a location to continue.";
+			if (state.marker) {
+				map.removeLayer(state.marker);
+				state.marker = null;
+			}
+			latInput.value = "";
+			lonInput.value = "";
+			updateResults(null);
+			visualizeBtn.disabled = true;
+		});
+
+		const thresholdPlugin = {
+			id: "thresholdLines",
+			afterDraw(chart, args, opts) {
+				const { ctx, chartArea, scales } = chart;
+				if (!chartArea || !opts || !opts.lines) return;
+				const yScale = scales.y;
+				opts.lines.forEach((line) => {
+					const y = yScale.getPixelForValue(line.value);
+					ctx.save();
+					ctx.setLineDash([6, 6]);
+					ctx.strokeStyle = line.color;
+					ctx.lineWidth = 1;
+					ctx.beginPath();
+					ctx.moveTo(chartArea.left, y);
+					ctx.lineTo(chartArea.right, y);
+					ctx.stroke();
+					ctx.setLineDash([]);
+					ctx.fillStyle = line.color;
+					ctx.font = "12px Space Grotesk, Arial, sans-serif";
+					ctx.fillText(line.label, chartArea.left + 6, y - 6);
+					ctx.restore();
+				});
+			}
+		};
+
+		function parseLifespanUpper(lifespanText) {
+			if (!lifespanText) return null;
+			const match = String(lifespanText).match(/(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)/);
+			return match ? Number(match[2]) : null;
+		}
+
+		function setBadge(elementId, value, goodCheck, warnCheck, goodText, warnText, badText) {
+			const el = document.getElementById(elementId);
+			if (!el) return;
+			if (value === null || Number.isNaN(value)) {
+				el.className = "badge";
+				el.textContent = "--";
+				return;
+			}
+			if (goodCheck(value)) {
+				el.className = "badge good";
+				el.textContent = goodText;
+				return;
+			}
+			if (warnCheck(value)) {
+				el.className = "badge warn";
+				el.textContent = warnText;
+				return;
+			}
+			el.className = "badge bad";
+			el.textContent = badText;
+		}
+
+		function setRiskStyles(riskLevel) {
+			const riskCard = document.getElementById("riskCard");
+			const riskBadge = document.getElementById("riskBadge");
+			if (!riskCard || !riskBadge) return;
+			riskCard.classList.remove("risk-low", "risk-medium", "risk-high");
+			if (!riskLevel) {
+				riskBadge.className = "badge";
+				riskBadge.textContent = "--";
+				return;
+			}
+			const level = String(riskLevel).toLowerCase();
+			if (level.includes("low")) {
+				riskCard.classList.add("risk-low");
+				riskBadge.className = "badge good";
+				riskBadge.textContent = "Low Risk";
+				return;
+			}
+			if (level.includes("medium")) {
+				riskCard.classList.add("risk-medium");
+				riskBadge.className = "badge warn";
+				riskBadge.textContent = "Medium Risk";
+				return;
+			}
+			riskCard.classList.add("risk-high");
+			riskBadge.className = "badge bad";
+			riskBadge.textContent = "High Risk";
+		}
+
+		function setFoundationNote(foundation) {
+			const note = document.getElementById("foundationNote");
+			if (!note) return;
+			const map = {
+				"Simple Strip Footing": "✅ Suitable for light buildings",
+				"Isolated Footing": "✅ Standard residential",
+				"Isolated Footing with RCC": "⚠️ Heavy buildings — extra steel needed",
+				"Raft Foundation": "⚠️ Weak soil — spread load",
+				"Pile Foundation (Deep)": "❌ Very weak soil — reach bedrock"
+			};
+			if (!foundation) {
+				note.textContent = "--";
+				return;
+			}
+			note.textContent = map[foundation] || "Recommendation depends on local soil conditions.";
+		}
+
+		function setSummaryBanner(banner, titleEl, bodyEl, result, feasibility) {
+			if (!banner || !titleEl || !bodyEl) return;
+			if (!result || feasibility === null || Number.isNaN(feasibility)) {
+				banner.className = "banner";
+				titleEl.textContent = "--";
+				bodyEl.textContent = "--";
+				return;
+			}
+			const scores = [
+				feasibility,
+				result.domain_scores ? result.domain_scores.soil : null,
+				result.domain_scores ? result.domain_scores.climate : null,
+				result.domain_scores ? result.domain_scores.environment : null,
+				result.domain_scores ? result.domain_scores.animal : null
+			].filter((v) => v !== null && !Number.isNaN(v));
+			if (!scores.length) {
+				banner.className = "banner";
+				titleEl.textContent = "--";
+				bodyEl.textContent = "--";
+				return;
+			}
+			const minScore = Math.min(...scores);
+			if (minScore < 50) {
+				banner.className = "banner bad";
+				titleEl.textContent = "🔴 NOT RECOMMENDED — High risk site";
+				bodyEl.textContent = "At least one core score is below 50. Engineer review is mandatory before proceeding.";
+				return;
+			}
+			if (minScore < 75) {
+				banner.className = "banner warn";
+				titleEl.textContent = "🟡 CONDITIONAL — Engineer review recommended";
+				bodyEl.textContent = "One or more scores are between 50 and 74. Address weaknesses before construction.";
+				return;
+			}
+			banner.className = "banner good";
+			titleEl.textContent = "🟢 SITE APPROVED — Safe to proceed";
+			bodyEl.textContent = "All core scores are at or above 75. Continue with standard approvals.";
+		}
+
+		function setVerdictBanner(banner, titleEl, bodyEl, metrics) {
+			if (!banner || !titleEl || !bodyEl) return;
+			const { feasibility, lifespanUpper, bearingCap, lifespanText } = metrics || {};
+			if (feasibility === null || Number.isNaN(feasibility)) {
+				banner.className = "banner";
+				titleEl.textContent = "--";
+				bodyEl.textContent = "--";
+				return;
+			}
+			const criticalReasons = [];
+			if (lifespanUpper !== null && lifespanUpper < 50) {
+				criticalReasons.push(`predicted lifespan (${lifespanText || "--"}) is critically low`);
+			}
+			if (feasibility < 50) {
+				criticalReasons.push("feasibility is below 50%");
+			}
+			if (bearingCap !== null && !Number.isNaN(bearingCap) && bearingCap < 60) {
+				criticalReasons.push(`bearing capacity (${bearingCap} kN/m2) is below safe minimum`);
+			}
+
+			const warningReasons = [];
+			if (lifespanUpper !== null && lifespanUpper >= 50 && lifespanUpper < 70) {
+				warningReasons.push("lifespan is moderate (50–70 years)");
+			}
+			if (feasibility >= 50 && feasibility < 75) {
+				warningReasons.push("feasibility is moderate (50–75%)");
+			}
+
+			if (criticalReasons.length) {
+				banner.className = "banner bad";
+				titleEl.textContent = "🔴 STRUCTURAL CONCERN DETECTED";
+				bodyEl.textContent = `Feasibility is ${feasibility}% but ${criticalReasons.join(" and ")}. This site needs foundation upgrade before construction.`;
+				return;
+			}
+			if (warningReasons.length) {
+				banner.className = "banner warn";
+				titleEl.textContent = "🟡 CONDITIONAL — Review Required";
+				bodyEl.textContent = `Feasibility is ${feasibility}% with ${warningReasons.join(" and ")}. Engineer review is recommended before approval.`;
+				return;
+			}
+			banner.className = "banner good";
+			titleEl.textContent = "🟢 STRUCTURALLY SOUND";
+			bodyEl.textContent = `Feasibility is ${feasibility}% and critical safety thresholds are met. Proceed with standard design checks.`;
+		}
+
+		function setScoreExplanation(result, feasibility, lifespanUpper, soilDeg, bearingCap) {
+			const explanation = document.getElementById("scoreExplanation");
+			if (!explanation) return;
+			if (!result) {
+				explanation.textContent = "--";
+				return;
+			}
+			const feasibilityText = feasibility !== null && !Number.isNaN(feasibility)
+				? `${feasibility}%`
+				: "--";
+			const lifespanText = result.lifespan || "--";
+			const soilText = soilDeg !== null && !Number.isNaN(soilDeg)
+				? `${soilDeg}%`
+				: "--";
+			const bearingText = bearingCap !== null && !Number.isNaN(bearingCap)
+				? `${bearingCap} kN/m2`
+				: "--";
+			const foundationText = result.foundation ? `Recommendation: ${result.foundation}.` : "";
+			explanation.textContent = `Your Feasibility score (${feasibilityText}) measures overall site suitability across soil, climate, environment, and ecology. However, Lifespan prediction (${lifespanText}) depends heavily on soil bearing capacity and degradation risk. Your Soil Degradation is ${soilText} and bearing capacity is ${bearingText}, which can shorten structural lifespan even on an otherwise feasible site. ${foundationText}`;
+		}
+
+		function updateResults(result) {
+			const fallback = "--";
+			const summaryBanner = document.getElementById("summaryBanner");
+			const summaryTitle = document.getElementById("summaryTitle");
+			const summaryBody = document.getElementById("summaryBody");
+			const verdictBanner = document.getElementById("verdictBanner");
+			const verdictTitle = document.getElementById("verdictTitle");
+			const verdictBody = document.getElementById("verdictBody");
+			const lifespanWarning = document.getElementById("lifespanWarning");
+			document.getElementById("feasibility").textContent = result ? `${result.feasibility_score}%` : fallback;
+			document.getElementById("risk").textContent = result ? result.risk_level : fallback;
+			document.getElementById("lifespan").textContent = result ? result.lifespan : fallback;
+			document.getElementById("confidence").textContent = result ? `${result.confidence}%` : fallback;
+			document.getElementById("foundation").textContent = result ? result.foundation : fallback;
+			document.getElementById("success").textContent = result ? `${result.success_probability}` : fallback;
+			document.getElementById("soilRisk").textContent = result ? `${result.soil_degradation_risk_score}%` : fallback;
+			document.getElementById("climateStress").textContent = result ? `${result.climate_stress_frequency_score}%` : fallback;
+			document.getElementById("waterExposure").textContent = result ? `${result.water_exposure_probability_score}%` : fallback;
+			document.getElementById("bioDamage").textContent = result ? `${result.biological_damage_probability_score}%` : fallback;
+			document.getElementById("typeCode").textContent = result ? `${result.construction_type_encoded}` : fallback;
+			document.getElementById("riskSummary").textContent = result ? result.risk_factor_summary : fallback;
+			document.getElementById("modelVersion").textContent = result && result.model_metadata ? result.model_metadata.version : fallback;
+			document.getElementById("trainedOn").textContent = result && result.model_metadata ? result.model_metadata.trained_on : fallback;
+			document.getElementById("featureCount").textContent = result && result.model_metadata ? result.model_metadata.feature_count : fallback;
+			document.getElementById("sourceStatus").textContent = result && result.source_status
+				? `soilgrids: ${result.source_status.soilgrids}, nasa: ${result.source_status.nasa_power}, usgs: ${result.source_status.usgs}, gbif: ${result.source_status.gbif}`
+				: fallback;
+			document.getElementById("dataFreshness").textContent = result && result.data_freshness
+				? `soilgrids: ${result.data_freshness.soilgrids}`
+				: fallback;
+			document.getElementById("ahpScore").textContent = result ? `${result.ahp_score}%` : fallback;
+			document.getElementById("ahpDelta").textContent = result ? `${result.ahp_delta}%` : fallback;
+			document.getElementById("dataQuality").textContent = result ? `${result.data_quality_score}%` : fallback;
+			document.getElementById("historicalMatch").textContent = result && result.historical_match_km !== null
+				? `${result.historical_match_km} km`
+				: "No match";
+
+			const feasibility = result ? Number(result.feasibility_score) : null;
+			const confidence = result ? Number(result.confidence) : null;
+			const successProb = result ? Number(result.success_probability) : null;
+			const soilDeg = result ? Number(result.soil_degradation_risk_score) : null;
+			const climateStress = result ? Number(result.climate_stress_frequency_score) : null;
+			const waterExposure = result ? Number(result.water_exposure_probability_score) : null;
+			const bioDamage = result ? Number(result.biological_damage_probability_score) : null;
+			const lifespanUpper = result ? parseLifespanUpper(result.lifespan) : null;
+			const bearingCap = result && result.raw_data && result.raw_data.soil
+				? Number(result.raw_data.soil.bearing_capacity_kNm2)
+				: null;
+
+			setBadge("feasibilityBadge", feasibility,
+				(v) => v >= 75,
+				(v) => v >= 50,
+				"✅ Good to Build",
+				"⚠️ Proceed with Caution",
+				"❌ High Risk — Avoid"
+			);
+
+			setBadge("lifespanBadge", lifespanUpper,
+				(v) => v >= 80,
+				(v) => v >= 50,
+				"✅ Long Lifespan",
+				"⚠️ Medium Lifespan",
+				"❌ Short Lifespan — Check Soil"
+			);
+
+			setBadge("confidenceBadge", confidence,
+				(v) => v >= 80,
+				(v) => v >= 60,
+				"✅ High Confidence",
+				"⚠️ Moderate Confidence",
+				"❌ Low Confidence — More data needed"
+			);
+
+			setBadge("successBadge", successProb,
+				(v) => v >= 0.8,
+				(v) => v >= 0.6,
+				"✅ High Success Chance",
+				"⚠️ Moderate",
+				"❌ Low Success — Engineer review mandatory"
+			);
+
+			setBadge("soilRiskBadge", soilDeg,
+				(v) => v < 20,
+				(v) => v < 40,
+				"✅ Low Degradation",
+				"⚠️ Moderate",
+				"❌ High — Foundation at risk"
+			);
+
+			setBadge("climateStressBadge", climateStress,
+				(v) => v < 25,
+				(v) => v < 50,
+				"✅ Low Climate Stress",
+				"⚠️ Moderate stress",
+				"❌ High stress — Waterproofing mandatory"
+			);
+
+			setBadge("waterExposureBadge", waterExposure,
+				(v) => v < 25,
+				(v) => v < 50,
+				"✅ Low Exposure",
+				"⚠️ Moderate exposure",
+				"❌ High exposure — Drainage required"
+			);
+
+			setBadge("bioDamageBadge", bioDamage,
+				(v) => v < 25,
+				(v) => v < 50,
+				"✅ Low Biological Risk",
+				"⚠️ Moderate risk",
+				"❌ High risk — Pest control needed"
+			);
+
+			setRiskStyles(result ? result.risk_level : null);
+			setFoundationNote(result ? result.foundation : null);
+			setSummaryBanner(summaryBanner, summaryTitle, summaryBody, result, feasibility);
+			setVerdictBanner(verdictBanner, verdictTitle, verdictBody, {
+				feasibility,
+				lifespanUpper,
+				bearingCap,
+				lifespanText: result ? result.lifespan : null
+			});
+			setScoreExplanation(result, feasibility, lifespanUpper, soilDeg, bearingCap);
+			if (lifespanWarning) {
+				lifespanWarning.style.display = lifespanUpper !== null && lifespanUpper < 40 ? "block" : "none";
+			}
+			const notesEl = document.getElementById("safetyNotes");
+			notesEl.innerHTML = "";
+			if (result && Array.isArray(result.safety_notes) && result.safety_notes.length) {
+				result.safety_notes.forEach((note) => {
+					const li = document.createElement("li");
+					li.textContent = note;
+					notesEl.appendChild(li);
+				});
+			} else {
+				const li = document.createElement("li");
+				li.textContent = "No additional safety notes.";
+				notesEl.appendChild(li);
+			}
+
+			const scores = result && result.domain_scores
+				? [result.domain_scores.soil, result.domain_scores.climate, result.domain_scores.environment, result.domain_scores.animal]
+				: [0, 0, 0, 0];
+			const barColors = scores.map((value) => {
+				if (value >= 70) return "#7ac79b";
+				if (value >= 50) return "#f0b85b";
+				return "#e07a7a";
+			});
+
+			if (!state.chart) {
+				const ctx = document.getElementById("riskChart").getContext("2d");
+				state.chart = new Chart(ctx, {
+					type: "bar",
+					data: {
+						labels: ["Soil", "Climate", "Environment", "Wildlife"],
+						datasets: [{
+							label: "Score",
+							data: scores,
+							backgroundColor: barColors,
+							borderRadius: 8
+						}]
+					},
+					options: {
+						responsive: true,
+						scales: {
+							y: {
+								beginAtZero: true,
+								max: 100
+							}
+						},
+						plugins: {
+							legend: { display: false },
+							thresholdLines: {
+								lines: [
+									{ value: 50, color: "#b42318", label: "Minimum Safe Threshold" },
+									{ value: 75, color: "#1b7f4b", label: "Good Zone" }
+								]
+							}
+						}
+					},
+					plugins: [thresholdPlugin]
+				});
+			} else {
+				state.chart.data.datasets[0].data = scores;
+				state.chart.data.datasets[0].backgroundColor = barColors;
+				state.chart.update();
+			}
+
+			if (!result) {
+				reportBtn.disabled = true;
+				releaseStatus.textContent = "Pending review";
+			}
+		}
+
+		document.getElementById("analyzeBtn").addEventListener("click", async () => {
+			if (!requireLogin()) {
+				return;
+			}
+			if (state.lat === null || state.lon === null) {
+				statusLog.textContent = "Pick a location on the map first.";
+				return;
+			}
+
+			const sensorData = {};
+			if (sensorSoilMoisture.value) sensorData.soil_moisture_percent = Number(sensorSoilMoisture.value);
+			if (sensorGroundwater.value) sensorData.groundwater_depth = Number(sensorGroundwater.value);
+			if (sensorRainfall.value) sensorData.local_rainfall_mm = Number(sensorRainfall.value);
+			if (sensorWind.value) sensorData.local_wind_speed_ms = Number(sensorWind.value);
+			if (Object.keys(sensorData).length) {
+				sensorData.sensor_timestamp = new Date().toISOString();
+			}
+
+			statusLog.textContent = "Collecting live data, running models...";
+			try {
+				const res = await fetch("/api/analyze", {
+					method: "POST",
+					headers: authHeaders(),
+					body: JSON.stringify({
+						lat: state.lat,
+						lon: state.lon,
+						building_type: state.buildingType,
+						floors: state.floors,
+						sensor_data: sensorData
+					})
+				});
+
+				const payload = await res.json();
+				if (!res.ok || payload.error) {
+					statusLog.textContent = payload.error || "Analysis failed.";
+					return;
+				}
+				lastPayload = {
+					inputs: {
+						lat: state.lat,
+						lon: state.lon,
+						building_type: state.buildingType,
+						floors: state.floors
+					},
+					result: payload.result
+				};
+				updateResults(payload.result);
+				statusLog.textContent = "Analysis complete. Review the dashboard metrics.";
+				setActiveTab("analysis");
+				visualizeBtn.disabled = false;
+			} catch (err) {
+				statusLog.textContent = "Network error. Please try again.";
+			}
+		});
+
+		visualizeBtn.addEventListener("click", () => {
+			if (!lastPayload) {
+				statusLog.textContent = "Run analysis before viewing visualization.";
+				return;
+			}
+			statusLog.textContent = "Generating 3D Simulation... This may take 10-15 seconds.";
+
+			const form = document.createElement("form");
+			form.method = "POST";
+			form.action = "/visualization";
+
+			const fields = {
+				lat: lastPayload.inputs.lat,
+				lon: lastPayload.inputs.lon,
+				building_type: lastPayload.inputs.building_type,
+				floors: lastPayload.inputs.floors
+			};
+
+			for (const key in fields) {
+				const input = document.createElement("input");
+				input.type = "hidden";
+				input.name = key;
+				input.value = fields[key];
+				form.appendChild(input);
+			}
+
+			document.body.appendChild(form);
+			form.submit();
+		});
+
+		reportBtn.addEventListener("click", async () => {
+			if (!requireLogin()) {
+				return;
+			}
+			if (!lastPayload) {
+				statusLog.textContent = "Run analysis before downloading report.";
+				return;
+			}
+			if (!lastReview || !checklistComplete()) {
+				statusLog.textContent = "Complete engineer review and checklist before downloading report.";
+				return;
+			}
+			statusLog.textContent = "Generating PDF report...";
+			try {
+				const payload = { ...lastPayload };
+				if (lastReview) {
+					payload.review = lastReview;
+				}
+				const res = await fetch("/api/report", {
+					method: "POST",
+					headers: authHeaders(),
+					body: JSON.stringify(payload)
+				});
+				if (!res.ok) {
+					const err = await res.json();
+					statusLog.textContent = err.error || "Failed to generate report.";
+					return;
+				}
+				const blob = await res.blob();
+				const url = window.URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = "site_feasibility_report.pdf";
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				setTimeout(() => window.URL.revokeObjectURL(url), 1500);
+				statusLog.textContent = "Report downloaded successfully.";
+			} catch (err) {
+				statusLog.textContent = "Report generation failed.";
+			}
+		});
+
+		submitReviewBtn.addEventListener("click", async () => {
+			if (!requireLogin()) {
+				return;
+			}
+			if (!lastPayload) {
+				statusLog.textContent = "Run analysis before submitting review.";
+				return;
+			}
+			if (!reviewerName.value.trim() || !licenseId.value.trim() || !reviewDate.value) {
+				statusLog.textContent = "Reviewer name, license ID, and date are required.";
+				return;
+			}
+			lastReview = {
+				reviewer_name: reviewerName.value.trim(),
+				license_id: licenseId.value.trim(),
+				decision: reviewDecision.value,
+				review_date: reviewDate.value,
+				notes: reviewNotes.value.trim(),
+				checklist: {
+					soil_bearing_test: document.getElementById("chk-soil").checked,
+					groundwater_survey: document.getElementById("chk-water").checked,
+					seismic_check: document.getElementById("chk-seismic").checked,
+					flood_history: document.getElementById("chk-flood").checked,
+					environment_clearance: document.getElementById("chk-env").checked,
+					model_verified: document.getElementById("chk-verify").checked,
+					data_freshness: document.getElementById("chk-fresh").checked,
+					field_tests: document.getElementById("chk-field").checked,
+					maps_verified: document.getElementById("chk-cross").checked,
+					license_verified: document.getElementById("chk-license").checked
+				}
+			};
+			statusLog.textContent = "Submitting engineer review...";
+			try {
+				const res = await fetch("/api/review", {
+					method: "POST",
+					headers: authHeaders(),
+					body: JSON.stringify({
+						...lastPayload,
+						review: lastReview
+					})
+				});
+				const payload = await res.json();
+				if (!res.ok || payload.error) {
+					statusLog.textContent = payload.error || "Review submission failed.";
+					return;
+				}
+				statusLog.textContent = "Engineer review saved.";
+				updateReleaseStatus();
+			} catch (err) {
+				statusLog.textContent = "Review submission failed.";
+			}
+		});
+
+		checklistInputs.forEach((input) => {
+			input.addEventListener("change", updateReleaseStatus);
+		});
+
+		async function refreshDatasetStatus() {
+			try {
+				if (!requireLogin()) {
+					return;
+				}
+				const res = await fetch("/api/datasets/status", { headers: authHeaders() });
+				const data = await res.json();
+				if (!res.ok || data.error) {
+					datasetStatus.textContent = data.error || "Unable to read dataset status.";
+					return;
+				}
+				if (!data.exists) {
+					datasetStatus.textContent = "No dataset uploaded.";
+					return;
+				}
+				datasetStatus.textContent = `Rows: ${data.rows} | Updated: ${data.updated}`;
+			} catch (err) {
+				datasetStatus.textContent = "Dataset status unavailable.";
+			}
+		}
+
+		uploadDatasetBtn.addEventListener("click", async () => {
+			if (!requireLogin()) {
+				return;
+			}
+			if (!datasetFile.files.length) {
+				statusLog.textContent = "Choose a CSV file to upload.";
+				return;
+			}
+			statusLog.textContent = "Uploading historical dataset...";
+			const formData = new FormData();
+			formData.append("file", datasetFile.files[0]);
+			try {
+				const res = await fetch("/api/datasets/upload", {
+					method: "POST",
+					headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+					body: formData
+				});
+				if (langSelect) {
+					applyTranslations(langSelect.value);
+				}
+				updateReleaseStatus();
+				if (!requireLogin()) {
+					return;
+				}
+				const data = await res.json();
+				if (!res.ok || data.error) {
+					statusLog.textContent = data.error || "Upload failed.";
+					return;
+				}
+				statusLog.textContent = "Dataset uploaded.";
+				refreshDatasetStatus();
+			} catch (err) {
+				statusLog.textContent = "Upload failed.";
+			}
+		});
+
+		emailReportBtn.addEventListener("click", async () => {
+			if (!requireLogin()) {
+				return;
+			}
+			if (!lastPayload) {
+				statusLog.textContent = "Run analysis before emailing report.";
+				return;
+			}
+			if (!lastReview || !checklistComplete()) {
+				statusLog.textContent = "Complete engineer review and checklist before emailing report.";
+				return;
+			}
+			if (!reportEmail.value.trim()) {
+				statusLog.textContent = "Enter a recipient email.";
+				return;
+			}
+			statusLog.textContent = "Emailing report...";
+			try {
+				const res = await fetch("/api/report/email", {
+					method: "POST",
+					headers: authHeaders(),
+					body: JSON.stringify({
+						to_email: reportEmail.value.trim(),
+						...lastPayload,
+						review: lastReview
+					})
+				});
+				const data = await res.json();
+				if (!res.ok || data.error) {
+					statusLog.textContent = data.error || "Email failed.";
+					alert(data.error || "Email failed.");
+					return;
+				}
+				statusLog.textContent = "Email sent successfully.";
+				alert("Email sent successfully!");
+			} catch (err) {
+				statusLog.textContent = "Email failed.";
+			}
+		});
+
+		refreshDatasetStatus();
+
+		updateResults(null);
+	</script>
+</body>
+
+</html>

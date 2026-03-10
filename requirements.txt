@@ -1,0 +1,15 @@
+flask
+requests
+pandas
+numpy
+scikit-learn
+xgboost
+reportlab
+flask-jwt-extended
+flask-limiter
+flask-mail
+flask-sqlalchemy
+psycopg2-binary
+pillow
+gunicorn
+python-dotenv

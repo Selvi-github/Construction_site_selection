@@ -1,0 +1,593 @@
+# app.py — Flask Backend
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+from flask import Flask, request, jsonify, render_template, send_file
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_sqlalchemy import SQLAlchemy
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_mail import Mail, Message
+from predictor import predict_location, HIST_DATA_PATH, get_hist_path
+from io import BytesIO
+from datetime import datetime
+import json
+import os
+import pandas as pd
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+import requests
+
+def get_scenario_filename(result):
+    """Maps the analysis result to one of 10 pre-rendered Image Scenarios"""
+    raw = result.get('raw_data', {})
+    env = raw.get('env', {})
+    climate = raw.get('climate', {})
+    soil = raw.get('soil', {})
+    animal = raw.get('animal', {})
+    
+    # Parse factors
+    flood_risk = str(env.get('flood_risk') or climate.get('flood_risk') or 'Low').upper()
+    seismic_risk = str(env.get('earthquake_risk') or 'Low').upper()
+    seismic_high = seismic_risk in ["HIGH", "SEVERE", "ZONE V", "ZONE IV"]
+    
+    bearing = soil.get('bearing_capacity_kNm2', 150)
+    try: bearing = float(bearing)
+    except: bearing = 150
+    soil_weak = bearing < 100
+    
+    wildlife_high = str(animal.get('protected_area_risk') or 'Low').upper() == "HIGH"
+    
+    # Map to EXACT 10 scenarios
+    # 1. Extreme Hazard (3+ risks)
+    risk_count = (flood_risk == "HIGH") + seismic_high + soil_weak + wildlife_high
+    if risk_count >= 3:
+        return "scenario_extreme_hazard.png"
+        
+    # Combinations (2 risks)
+    if flood_risk == "HIGH" and seismic_high: return "scenario_flood_and_seismic.png"
+    if flood_risk == "HIGH" and soil_weak: return "scenario_flood_and_soil.png"
+    if seismic_high and soil_weak: return "scenario_seismic_and_soil.png"
+    if risk_count == 2: return "scenario_extreme_hazard.png" # Fallback for other 2-combos
+    
+    # Single Risks
+    if flood_risk == "HIGH": return "scenario_flood_heavy.png"
+    if seismic_high: return "scenario_seismic_damage.png"
+    if soil_weak: return "scenario_soil_weak.png"
+    if wildlife_high: return "scenario_wildlife.png"
+    
+    # 0 High Risks
+    # Check for mediums
+    flood_med = flood_risk == "MEDIUM"
+    seismic_med = seismic_risk in ["MEDIUM", "ZONE III"]
+    wildlife_med = str(animal.get('protected_area_risk') or 'Low').upper() == "MEDIUM"
+    if flood_med or seismic_med or wildlife_med or (bearing < 150):
+        return "scenario_moderate_risk.png"
+        
+    # Safe
+    return "scenario_ideal.png"
+
+app = Flask(__name__)
+CORS(app)
+
+default_sqlite = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'data', 'app.db')}"
+db_url = os.getenv("DATABASE_URL", default_sqlite)
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+if db_url.startswith("sqlite:///"):
+    os.makedirs(os.path.join(os.path.dirname(__file__), "data"), exist_ok=True)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "change-me")
+app.config["MAIL_SERVER"] = os.getenv("MAIL_SERVER", "")
+app.config["MAIL_PORT"] = int(os.getenv("MAIL_PORT", "587"))
+app.config["MAIL_USE_TLS"] = os.getenv("MAIL_USE_TLS", "1").lower() in {"1", "true", "yes"}
+app.config["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME", "")
+app.config["MAIL_PASSWORD"] = os.getenv("MAIL_PASSWORD", "")
+app.config["MAIL_DEFAULT_SENDER"] = os.getenv("MAIL_DEFAULT_SENDER", "")
+
+db = SQLAlchemy(app)
+jwt = JWTManager(app)
+mail = Mail(app)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
+
+AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "1").lower() in {"1", "true", "yes"}
+AUDIT_DIR = os.path.join(os.path.dirname(__file__), "logs")
+AUDIT_FILE = os.path.join(AUDIT_DIR, "audit_log.jsonl")
+REVIEW_FILE = os.path.join(AUDIT_DIR, "review_log.jsonl")
+
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+with app.app_context():
+    db.create_all()
+
+
+def _maybe_jwt_required(fn):
+    if AUTH_REQUIRED:
+        return jwt_required()(fn)
+    return fn
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
+
+
+@app.route("/register")
+def register_page():
+    return render_template("register.html")
+
+@app.route("/visualization", methods=["GET", "POST"])
+def visualization_page():
+    if request.method == "POST":
+        try:
+            # Similar to analyze but directly returns the page with image
+            lat           = float(request.form.get("lat", 0))
+            lon           = float(request.form.get("lon", 0))
+            building_type = request.form.get("building_type", "House")
+            floors        = int(request.form.get("floors", 2))
+            
+            if not (6.5 <= lat <= 37.5 and 67.0 <= lon <= 97.5):
+                return render_template("visualization.html", error="Location must be within India!")
+                
+            land_status = _land_status(lat, lon)
+            if land_status == "water":
+                return render_template("visualization.html", error="Selected point is water.")
+            if land_status == "unknown":
+                return render_template(
+                    "visualization.html",
+                    error="Unable to verify land vs water for this location. Please try again or select another point."
+                )
+                
+            pred_result = predict_location(lat, lon, building_type, floors, sensor_data={})
+            
+            # Map prediction to one of 10 visual scenarios
+            scenario_filename = get_scenario_filename(pred_result)
+            image_path = f"/static/scenarios/{scenario_filename}"
+            
+            # Inject visualization helpers for badges & CSS animation
+            raw = pred_result.get('raw_data', {})
+            env_data = raw.get('env', {})
+            animal_data = raw.get('animal', {})
+            soil_data = raw.get('soil', {})
+            pred_result['flood_risk'] = str(env_data.get('flood_risk', 'LOW')).upper()
+            pred_result['seismic_risk'] = str(env_data.get('earthquake_risk', 'LOW')).upper()
+            
+            bearing = soil_data.get('bearing_capacity_kNm2', 150)
+            try: bearing = float(bearing)
+            except: bearing = 150
+            pred_result['soil_strength'] = 'WEAK' if bearing < 100 else 'STRONG'
+            
+            pa_risk = str(animal_data.get('protected_area_risk', 'LOW')).upper()
+            pred_result['animal_conflict'] = pa_risk
+            
+            return render_template("visualization.html", result=pred_result, image_path=image_path)
+        except Exception as e:
+            return render_template("visualization.html", error=str(e))
+            
+            
+    return render_template("visualization.html", result=None, image_path=None)
+
+@app.route("/api/analyze", methods=["POST"])
+@limiter.limit("30 per minute")
+@_maybe_jwt_required
+def analyze():
+    try:
+        data          = request.get_json()
+        lat           = float(data["lat"])
+        lon           = float(data["lon"])
+        building_type = data.get("building_type", "House")
+        floors        = int(data.get("floors", 2))
+        sensor_data   = data.get("sensor_data") or {}
+
+        # Validate India bounds
+        if not (6.5 <= lat <= 37.5 and 67.0 <= lon <= 97.5):
+            return jsonify({"error": "Location must be within India!"}), 400
+
+        # Basic water-body guard using OpenStreetMap reverse geocode
+        land_status = _land_status(lat, lon)
+        if land_status == "water":
+            return jsonify({"error": "Selected point appears to be water. Choose a land location."}), 400
+        if land_status == "unknown":
+            return jsonify({"error": "Unable to verify land vs water for this location. Please try again."}), 400
+
+        result = predict_location(lat, lon, building_type, floors, sensor_data=sensor_data)
+        user_identity = None
+        try:
+            user_identity = get_jwt_identity()
+        except Exception:
+            user_identity = None
+        _write_audit_log({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "ip": request.remote_addr,
+            "user": user_identity,
+            "inputs": {
+                "lat": lat,
+                "lon": lon,
+                "building_type": building_type,
+                "floors": floors,
+                "sensor_data": sensor_data
+            },
+            "result": result
+        })
+        return jsonify({"success": True, "result": result})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/report", methods=["POST"])
+@limiter.limit("10 per minute")
+@_maybe_jwt_required
+def report():
+    try:
+        data = request.get_json() or {}
+        inputs = data.get("inputs", {})
+        result = data.get("result", {})
+        review = data.get("review", {})
+        if not inputs or not result:
+            return jsonify({"error": "Missing inputs or result"}), 400
+
+        pdf_bytes = _build_report_pdf(inputs, result, review)
+        return send_file(
+            pdf_bytes,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name="site_feasibility_report.pdf"
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/review", methods=["POST"])
+@limiter.limit("10 per minute")
+@_maybe_jwt_required
+def review():
+    try:
+        data = request.get_json() or {}
+        inputs = data.get("inputs", {})
+        result = data.get("result", {})
+        review_data = data.get("review", {})
+        if not review_data:
+            return jsonify({"error": "Missing review data"}), 400
+
+        payload = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "ip": request.remote_addr,
+            "inputs": inputs,
+            "result": result,
+            "review": review_data
+        }
+        _write_review_log(payload)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "models": "loaded"})
+
+@app.route("/api/datasets/status", methods=["GET"])
+@limiter.limit("20 per minute")
+@_maybe_jwt_required
+def dataset_status():
+    try:
+        hist_path = get_hist_path()
+        if not os.path.exists(hist_path):
+            return jsonify({"exists": False})
+        df = pd.read_csv(hist_path)
+        return jsonify({
+            "exists": True,
+            "rows": int(len(df)),
+            "columns": list(df.columns),
+            "updated": datetime.utcfromtimestamp(os.path.getmtime(hist_path)).isoformat() + "Z"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/datasets/upload", methods=["POST"])
+@limiter.limit("5 per minute")
+@_maybe_jwt_required
+def dataset_upload():
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Missing file"}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "Empty filename"}), 400
+        fname = secure_filename(file.filename)
+        if not fname.lower().endswith(".csv"):
+            return jsonify({"error": "Only CSV files supported"}), 400
+        os.makedirs(os.path.dirname(HIST_DATA_PATH), exist_ok=True)
+        file.save(HIST_DATA_PATH)
+        return jsonify({"success": True, "path": "data/historical_data.csv"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/report/email", methods=["POST"])
+@limiter.limit("5 per minute")
+@_maybe_jwt_required
+def report_email():
+    try:
+        data = request.get_json() or {}
+        to_email = data.get("to_email")
+        inputs = data.get("inputs", {})
+        result = data.get("result", {})
+        review = data.get("review", {})
+        if not to_email:
+            return jsonify({"error": "Missing to_email"}), 400
+        if not inputs or not result:
+            return jsonify({"error": "Missing inputs or result"}), 400
+        if not app.config.get("MAIL_SERVER"):
+            print(f"Mock sending email to {to_email}")
+            return jsonify({"success": True, "message": "Email sent successfully (mocked)"})
+
+        pdf_bytes = _build_report_pdf(inputs, result, review)
+        msg = Message("AI Construction Site Feasibility Report", recipients=[to_email])
+        msg.body = "Please find the attached feasibility report."
+        msg.attach("site_feasibility_report.pdf", "application/pdf", pdf_bytes.getvalue())
+        mail.send(msg)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/auth/register", methods=["POST"])
+@limiter.limit("5 per minute")
+def register():
+    try:
+        data = request.get_json() or {}
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password") or ""
+        if not email or not password:
+            return jsonify({"error": "Missing email or password"}), 400
+        if User.query.filter_by(email=email).first():
+            return jsonify({"error": "User already exists"}), 400
+        user = User(email=email, password_hash=generate_password_hash(password))
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/auth/login", methods=["POST"])
+@limiter.limit("10 per minute")
+def login():
+    try:
+        data = request.get_json() or {}
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password") or ""
+        user = User.query.filter_by(email=email).first()
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "Invalid credentials"}), 401
+        token = create_access_token(identity=email)
+        return jsonify({"access_token": token})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def _write_audit_log(payload):
+    os.makedirs(AUDIT_DIR, exist_ok=True)
+    with open(AUDIT_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+def _write_review_log(payload):
+    os.makedirs(AUDIT_DIR, exist_ok=True)
+    with open(REVIEW_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+def _build_report_pdf(inputs, result, review=None):
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+
+    y = height - 60
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, y, "AI Construction Site Feasibility Report")
+    y -= 24
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y, f"Generated: {datetime.utcnow().isoformat()}Z")
+    y -= 20
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Input Location")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y, f"Latitude: {inputs.get('lat')} | Longitude: {inputs.get('lon')}")
+    y -= 14
+    c.drawString(50, y, f"Construction Type: {inputs.get('building_type')} | Floors: {inputs.get('floors')}")
+    y -= 22
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Key Outputs")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y, f"Feasibility Score: {result.get('feasibility_score')}%")
+    y -= 14
+    c.drawString(50, y, f"Risk Level: {result.get('risk_level')}")
+    y -= 14
+    c.drawString(50, y, f"Lifespan: {result.get('lifespan')} | Confidence: {result.get('confidence')}%")
+    y -= 14
+    c.drawString(50, y, f"Foundation Recommendation: {result.get('foundation')}")
+    y -= 14
+    c.drawString(50, y, f"Risk Factor Summary: {result.get('risk_factor_summary')}")
+    y -= 22
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Model Scores")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y, f"Soil Degradation Risk: {result.get('soil_degradation_risk_score')}%")
+    y -= 14
+    c.drawString(50, y, f"Climate Stress Frequency: {result.get('climate_stress_frequency_score')}%")
+    y -= 14
+    c.drawString(50, y, f"Water Exposure Probability: {result.get('water_exposure_probability_score')}%")
+    y -= 14
+    c.drawString(50, y, f"Biological Damage Probability: {result.get('biological_damage_probability_score')}%")
+    y -= 22
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "AHP Comparison")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y, f"AHP Weighted Score: {result.get('ahp_score')}%")
+    y -= 14
+    c.drawString(50, y, f"AI vs AHP Delta: {result.get('ahp_delta')}%")
+    y -= 22
+
+    domain = result.get("domain_scores", {})
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Domain Scores")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawString(
+        50,
+        y,
+        f"Soil: {domain.get('soil')}%  Climate: {domain.get('climate')}%  Env: {domain.get('environment')}%  Animal: {domain.get('animal')}%"
+    )
+    y -= 22
+
+    if review:
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y, "Engineer Review")
+        y -= 16
+        c.setFont("Helvetica", 10)
+        c.drawString(50, y, f"Reviewer: {review.get('reviewer_name', '-')}")
+        y -= 14
+        c.drawString(50, y, f"License ID: {review.get('license_id', '-')}")
+        y -= 14
+        c.drawString(50, y, f"Decision: {review.get('decision', '-')}")
+        y -= 14
+        c.drawString(50, y, f"Review Date: {review.get('review_date', '-')}")
+        y -= 14
+        notes = review.get("notes", "-")
+        c.drawString(50, y, f"Notes: {notes[:120]}")
+        y -= 22
+
+        checklist = review.get("checklist", {})
+        if checklist:
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(50, y, "Checklist Status")
+            y -= 16
+            c.setFont("Helvetica", 9)
+            items = [
+                ("Soil bearing test", checklist.get("soil_bearing_test")),
+                ("Groundwater survey", checklist.get("groundwater_survey")),
+                ("Seismic check", checklist.get("seismic_check")),
+                ("Flood history", checklist.get("flood_history")),
+                ("Environmental clearance", checklist.get("environment_clearance")),
+                ("Model verified", checklist.get("model_verified")),
+                ("Data freshness", checklist.get("data_freshness")),
+                ("Field tests", checklist.get("field_tests")),
+                ("Maps verified", checklist.get("maps_verified")),
+                ("License verified", checklist.get("license_verified")),
+            ]
+            for label, ok in items:
+                status = "Yes" if ok else "No"
+                c.drawString(50, y, f"{label}: {status}")
+                y -= 12
+            y -= 10
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Engineer Notes")
+    y -= 16
+    c.setFont("Helvetica", 9)
+    c.drawString(50, y, "This report is decision-support only and must be validated with field surveys.")
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return buf
+
+def _land_status(lat, lon):
+    """Return 'land', 'water', or 'unknown' based on OSM signals."""
+    water_types = {
+        "water", "bay", "river", "sea", "ocean", "lake", "reservoir",
+        "wetland", "harbour", "lagoon", "stream", "canal", "dam"
+    }
+    water_keywords = [
+        "water", "river", "sea", "ocean", "lake", "reservoir", "wetland",
+        "lagoon", "harbour", "stream", "canal", "dam"
+    ]
+    try:
+        url = "https://nominatim.openstreetmap.org/reverse"
+        params = {
+            "format": "jsonv2",
+            "lat": lat,
+            "lon": lon,
+            "zoom": 14,
+            "addressdetails": 1
+        }
+        headers = {"User-Agent": "construction-site-selector/1.0"}
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return "unknown"
+        data = r.json()
+        category = str(data.get("category", "")).lower()
+        place_type = str(data.get("type", "")).lower()
+        display = str(data.get("display_name", "")).lower()
+        address = data.get("address", {}) or {}
+        address_str = " ".join([str(v).lower() for v in address.values()])
+        country_code = str(address.get("country_code", "")).lower()
+
+        if country_code and country_code != "in":
+            return "water"
+        if category in {"water", "natural", "waterway", "place"} and place_type in water_types:
+            return "water"
+        if place_type in water_types:
+            return "water"
+        if any(k in display for k in water_keywords):
+            return "water"
+        if any(k in address_str for k in water_keywords):
+            return "water"
+
+        overpass_water = _overpass_is_water(lat, lon)
+        if overpass_water:
+            return "water"
+
+        if country_code == "in":
+            return "land"
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+def _overpass_is_water(lat, lon):
+    try:
+        url = "https://overpass-api.de/api/interpreter"
+        query = f"""
+[out:json][timeout:15];
+(
+  way(around:250,{lat},{lon})["natural"="water"];
+  relation(around:250,{lat},{lon})["natural"="water"];
+  way(around:250,{lat},{lon})["waterway"];
+  relation(around:250,{lat},{lon})["waterway"];
+  way(around:250,{lat},{lon})["natural"="bay"];
+  relation(around:250,{lat},{lon})["natural"="bay"];
+);
+out center 1;
+"""
+        r = requests.post(url, data=query, timeout=20)
+        if r.status_code != 200:
+            return False
+        data = r.json()
+        return bool(data.get("elements"))
+    except Exception:
+        return False
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
