@@ -29,4 +29,5 @@ RUN mkdir -p data logs instance
 
 # Run gunicorn server
 # Render provides the PORT environment variable (usually 10000)
-CMD gunicorn --bind 0.0.0.0:$PORT --workers 3 --timeout 120 app:app
+# We use 1 worker to stay within Free Tier RAM limits (512MB)
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 180 app:app

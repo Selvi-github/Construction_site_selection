@@ -538,7 +538,7 @@ def _land_status(lat, lon):
             "addressdetails": 1
         }
         headers = {"User-Agent": "construction-site-selector/1.0"}
-        r = requests.get(url, params=params, headers=headers, timeout=15)
+        r = requests.get(url, params=params, headers=headers, timeout=10)
         if r.status_code != 200:
             return "unknown"
         data = r.json()
@@ -585,7 +585,7 @@ def _overpass_is_water(lat, lon):
 );
 out center 1;
 """
-        r = requests.post(url, data=query, timeout=20)
+        r = requests.post(url, data=query, timeout=10)
         if r.status_code != 200:
             return False
         data = r.json()

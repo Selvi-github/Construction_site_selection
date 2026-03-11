@@ -188,7 +188,7 @@ def _get_cgwb_water_table(lat, lon):
         params = {"lat": lat, "lon": lon}
         if CGWB_API_KEY:
             params["api_key"] = CGWB_API_KEY
-        r = requests.get(CGWB_API_URL, params=params, timeout=30)
+        r = requests.get(CGWB_API_URL, params=params, timeout=10)
         data = r.json()
         depth = data.get("water_table_depth_m") or data.get("depth_m") or data.get("depth")
         if depth is None:
@@ -419,7 +419,7 @@ def _fetch_soil_point_soilgrids(lat, lon):
                          "bdod","cec","soc","nitrogen"],
             "depth"   : "0-5cm", "value": "mean"
         }
-        r    = requests.get(url, params=params, timeout=30)
+        r    = requests.get(url, params=params, timeout=10)
         data = r.json()
         row  = {}
         for layer in data["properties"]["layers"]:
@@ -439,7 +439,7 @@ def _fetch_soil_point_bhuvan(lat, lon):
         params = {"lat": lat, "lon": lon}
         if BHUVAN_API_KEY:
             params["api_key"] = BHUVAN_API_KEY
-        r = requests.get(BHUVAN_API_URL, params=params, timeout=30)
+        r = requests.get(BHUVAN_API_URL, params=params, timeout=10)
         data = r.json()
         if "properties" in data:
             data = data["properties"]
@@ -529,7 +529,7 @@ def _fetch_climate_point(lat, lon):
             "longitude" : lon, "latitude": lat,
             "format"    : "JSON"
         }
-        r     = requests.get(url, params=params, timeout=30)
+        r     = requests.get(url, params=params, timeout=10)
         props = r.json()["properties"]["parameter"]
         annual_rain = round(sum(props["PRECTOTCORR"].values()), 2)
         max_wind = round(max(props["WS10M_MAX"].values()), 2)
@@ -655,7 +655,7 @@ def get_env_data(lat, lon):
             "endtime": "2024-01-01",
             "limit": 100,
         }
-        r = requests.get(url, params=params, timeout=30)
+        r = requests.get(url, params=params, timeout=10)
         data = r.json()
         count = data["metadata"]["count"]
         mags = [f["properties"]["mag"] for f in data["features"] if f["properties"]["mag"]]
@@ -1625,10 +1625,18 @@ def predict_location(lat, lon, building_type="House", floors=2, sensor_data=None
 
     # 1. Collect all API data
     fetched_at = datetime.utcnow().isoformat() + "Z"
-    soil    = get_soil_data(lat, lon);    time.sleep(0.5)
-    climate = get_climate_data(lat, lon); time.sleep(0.5)
-    env     = get_env_data(lat, lon);     time.sleep(0.5)
-    animal  = get_animal_data(lat, lon)
+    
+    t0 = time.time()
+    soil    = get_soil_data(lat, lon);    print(f"⏱️ Soil data: {time.time()-t0:.2f}s")
+    
+    t1 = time.time()
+    climate = get_climate_data(lat, lon); print(f"⏱️ Climate data: {time.time()-t1:.2f}s")
+    
+    t2 = time.time()
+    env     = get_env_data(lat, lon);     print(f"⏱️ Env data: {time.time()-t2:.2f}s")
+    
+    t3 = time.time()
+    animal  = get_animal_data(lat, lon);   print(f"⏱️ Animal data: {time.time()-t3:.2f}s")
 
     sensor_data = sensor_data or {}
     local_sensors_used = bool(sensor_data)
