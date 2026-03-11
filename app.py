@@ -74,13 +74,17 @@ def get_scenario_filename(result):
 app = Flask(__name__)
 CORS(app)
 
-default_sqlite = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'data', 'app.db')}"
+default_sqlite_path = os.path.join(os.path.dirname(__file__), 'data', 'app.db')
+default_sqlite = f"sqlite:///{default_sqlite_path.replace(os.sep, '/')}"
 db_url = os.getenv("DATABASE_URL", default_sqlite)
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
 
 if db_url.startswith("sqlite:///"):
-    os.makedirs(os.path.join(os.path.dirname(__file__), "data"), exist_ok=True)
+    # Extract the actual file path from the URI
+    # This handles both sqlite:///path and sqlite:////path
+    db_file_path = db_url.replace("sqlite:///", "").replace("/", os.sep)
+    db_dir = os.path.dirname(db_file_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
