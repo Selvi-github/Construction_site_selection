@@ -27,9 +27,6 @@ COPY . .
 # Ensure data and logs directories exist
 RUN mkdir -p data logs instance
 
-# Expose port (Render uses the PORT environment variable)
-ENV PORT=5000
-EXPOSE 5000
-
-# Run gunicorn server with shell mode to expand $PORT
+# Run gunicorn server
+# Render provides the PORT environment variable (usually 10000)
 CMD gunicorn --bind 0.0.0.0:$PORT --workers 3 --timeout 120 app:app
