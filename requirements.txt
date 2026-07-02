@@ -4,6 +4,7 @@ pandas
 numpy
 scikit-learn
 xgboost
+shap
 reportlab
 flask-jwt-extended
 flask-limiter
